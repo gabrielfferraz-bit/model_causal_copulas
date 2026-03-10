@@ -132,39 +132,60 @@ ivar_gaussian <- function(x, K, gh = GH) {
 # 1B  FGM copula  (Section 5.2)
 # ------------------------------------------------------------------------------
 
-#' Interventional mean  μ(x)  under the FGM copula with uniform margins  (Eq. 5.39)
+#' Interventional mean μ(x) under full 3-param FGM (Sec 5.2.3, Eq 5.33)
 #'
-#' μ(x) = x + θ · x(1−x)(1−2x)
+#' μ(x) = 1/2 − α (1 − 2x) A,   where  A = 1/6 − η²/90
 #'
-#' The correction θ·x(1−x)(1−2x) is an antisymmetric cubic that vanishes at
-#' x ∈ {0, 0.5, 1} and reaches its extrema near x ≈ 0.21 and x ≈ 0.79.
-#' Values are clamped to [0, 1] to guard against negligible floating-point
-#' violations at the boundaries.
-mu_fgm <- function(x, theta) {
-  pmin(pmax(x + theta * x * (1 - x) * (1 - 2 * x), 0), 1)
+#' Derivation: integrating 1 − F^(X↓)_{Y|X}(y|x) (Eq 5.30) over y ∈ [0,1]
+#' with ∫₀¹ y(1−y) dy = 1/6  and  ∫₀¹ y²(1−y)² dy = 1/30.
+#' The (1−2x) factor comes from Eq 5.30; it centres μ at 0.5 when x = 0.5
+#' and moves it symmetrically up/down toward the tails.
+#' θ_{X,Z} (= beta) does not appear: ∫F_{X|Z}(x|z)dz = x cancels it (Eq 5.28).
+#' Bounds [0,1] are guaranteed for |α|,|η| ≤ 1 by FGM non-negativity (Eq 5.22).
+mu_fgm <- function(x, params) {
+  alpha <- params["theta_xy_cond"]   # conditional copula param (direct X→Y path)
+  eta   <- params["theta_yz"]        # marginal Y–Z copula param
+  A     <- 1/6 - eta^2 / 90         # = (15 − η²)/90; key scalar from Eq 5.33
+  0.5 - alpha * (1 - 2*x) * A
 }
 
-#' Average Causal Effect  ACE(x)  under the FGM copula   (Eq. 5.40)
+#' Average Causal Effect ACE(x) under full 3-param FGM (Sec 5.2.3, Eq 5.35)
 #'
-#' ACE(x) = 1 + θ(1 − 6x + 6x²)
+#' ACE(x) = α (15 − η²) / 45   [constant in x]
 #'
-#' This is a bounded quadratic in x with minimum 1 − θ/2 at x = 1/2 and
-#' maximum 1 + θ at x ∈ {0, 1}.  Unlike the Gaussian case, the range of
-#' variation is determined entirely by θ ∈ [−1, 1] and remains finite,
-#' producing the "bounded weak dependence" behaviour of Section 5.2.8.
-ace_fgm <- function(x, theta) 1 + theta * (1 - 6 * x + 6 * x^2)
-
-#' Interventional variance  Var[Y | do(X = x)]  under the FGM copula  (Section 6.9.3)
-#'
-#' For uniform margins the baseline variance of Y ~ U(0,1) is 1/12.  The FGM
-#' perturbation adds a quartic correction of order θ² (Section 6.9.3):
-#'
-#'   Var = 1/12 + θ² · x(1−x)(1−2x)² / 180
-#'
-#' This analytical approximation is valid for all |θ| ≤ 1.
-ivar_fgm <- function(x, theta) {
-  rep(1/12, length(x))
+#' Derivation: d/dx μ(x) = d/dx [1/2 − α(1−2x)A] = 2αA = α(15−η²)/45.
+#' The ACE is constant because (1−2x) differentiates to the constant −2.
+#' This is the defining qualitative property of bounded FGM dependence:
+#' no tail amplification, in sharp contrast to the Gaussian copula (Section 5.1).
+#' θ_{X,Z} cancels as in mu_fgm; only α and η determine the causal magnitude.
+ace_fgm <- function(x, params) {
+  alpha <- params["theta_xy_cond"]
+  eta   <- params["theta_yz"]
+  rep(alpha * (15 - eta^2) / 45, length(x))   # constant across all x
 }
+
+
+#' Interventional variance Var[Y|do(X=x)] under full 3-param FGM (Sec 5.2.3)
+#'
+#' Var(x) = 1/12 − α²(1−2x)² A²,   A = 1/6 − η²/90
+#'
+#' Derivation via E[Y²|do] − (E[Y|do])², using:
+#'   E[Y²|do] = 1/3 − 2α(1−2x)(A/2)  where A/2 = 1/12 − η²/180
+#'   E[Y|do]  = 1/2 − α(1−2x) A
+#'   Var       = (1/3 − 1/4) − α²(1−2x)²A² = 1/12 − α²(1−2x)²A²
+#'
+#' Key properties:
+#'   • MAXIMUM at x = 0.5 (the (1−2x)² term vanishes): Var(0.5) = 1/12
+#'   • MINIMUM at x = 0 or 1: Var = 1/12 − α²A²
+#'   • Always positive for |α|,|η| ≤ 1 (since α²A² ≤ 1/36 < 1/12)
+#'   • ACE_std = ACE/SD is therefore U-shaped with MINIMUM at the median
+ivar_fgm <- function(x, params) {
+  alpha <- params["theta_xy_cond"]
+  eta   <- params["theta_yz"]
+  A <- 1/6 - eta^2 / 90
+  1/12 - alpha^2 * (1 - 2*x)^2 * A^2
+}
+
 
 # ------------------------------------------------------------------------------
 # 1C  Generic utility: compute the full set of causal quantities over a grid
@@ -194,16 +215,39 @@ compute_causal_quantities <- function(mu_fn, ace_fn, ivar_fn, params, xgrid) {
   ace_std_mat <- matrix(NA_real_, n_x, n_case)
   
   for (j in seq_len(n_case)) {
-    p                <- params[j]
-    mu_mat[, j]      <- mu_fn(xgrid, p)
-    ace_mat[, j]     <- ace_fn(xgrid, p)
-    var_j            <- sapply(xgrid, ivar_fn, p)
-    sd_mat[, j]      <- sqrt(var_j)
-    ace_std_mat[, j] <- ace_mat[, j] / sd_mat[, j]
+    p <- params[[j]]
+    
+    # Vectorized mu/ace
+    mu_mat[, j]  <- mu_fn(xgrid, p)
+    ace_mat[, j] <- ace_fn(xgrid, p)
+    
+    # Scalar variance computation
+    var_j <- numeric(n_x)
+    for (i in seq_along(xgrid)) {
+      var_j[i] <- ivar_fn(xgrid[i], p)  # SCALAR LOOP ✓
+    }
+    
+    # ---- NUMERICAL STABILISATION (FIX) ----
+    
+    # Remove negative variance values from quadrature cancellation
+    var_j[var_j < 0] <- NA_real_
+    
+    # Compute SD
+    sd_j <- sqrt(var_j)
+    
+    # Standardized ACE with protection against near-zero SD
+    ace_std_j <- ace_mat[, j] / sd_j
+    ace_std_j[sd_j < 1e-6] <- NA_real_
+    
+    # Store results
+    sd_mat[, j]      <- sd_j
+    ace_std_mat[, j] <- ace_std_j
+    
   }
   
   list(mu = mu_mat, ace = ace_mat, sd = sd_mat, ace_std = ace_std_mat)
 }
+
 
 # ------------------------------------------------------------------------------
 # 1D  Generic utility: print a formatted summary table to the console
@@ -338,59 +382,85 @@ gauss_params <- list(
   CaseC = c(ryx = 0.70, rxz = 0.80, ryz = 0.60)    # strong confounding
 )
 
-# ---- 2B  FGM copula: dependence parameter θ ∈ [−1, 1] ----------------------
+# ---- 2B  FGM copula: dependence parameters (Section 5.2.3) -----------------
+# Three cases vary the direct-effect parameter alpha = theta_{X,Y|Z} while
+# holding the Y-Z marginal copula parameter eta = theta_{Y,Z} fixed at 0.30.
+# theta_{X,Z} (= beta) is included for structural completeness but cancels
+# analytically: M(x) = ∫ F_{X|Z}(x|z) dz = x (Eq 5.28).
+#
+# Cases A/B/C mirror the Gaussian family by spanning weak → strong direct effect:
+#   CaseA: alpha = 0.40  (moderate direct effect)
+#   CaseB: alpha = 0.80  (strong direct effect)
+#   CaseC: alpha = 0.20  (weak direct effect)
 fgm_params <- list(
-  CaseA = c(theta = 0.40),   # moderate direct effect
-  CaseB = c(theta = 0.80),   # stronger direct effect
-  CaseC = c(theta = 0.20)    # weaker direct effect
+  CaseA = c(theta_xy_cond = 0.40, theta_xz = 0.50, theta_yz = 0.30),
+  CaseB = c(theta_xy_cond = 0.80, theta_xz = 0.50, theta_yz = 0.30),
+  CaseC = c(theta_xy_cond = 0.20, theta_xz = 0.50, theta_yz = 0.30)
 )
 
 
 # ==============================================================================
-# SECTION 3 – COMPUTATIONS
+# SECTION 3 – COMPUTATIONS (100% Reproducible)
 # ==============================================================================
 
 # ---- 3A  Gaussian copula ----------------------------------------------------
-
-# Derive the structural parameter K for each confounding scenario.
-K_vals <- sapply(gauss_params, function(p)
-  partial_corr_gaussian(p["ryx"], p["rxz"], p["ryz"]))
+# Derive the structural parameter K for each confounding scenario via Theorem 5.1.
+# K = ρ_{Y*X*|Z*} = partial correlation on latent Gaussian scale = copula parameter ρ_{X,Y|Z}.
+K_vals <- sapply(names(gauss_params), function(name) {
+  p <- gauss_params[[name]]
+  partial_corr_gaussian(p["ryx"], p["rxz"], p["ryz"])
+})
+names(K_vals) <- names(gauss_params)
 
 cat("Gaussian copula: latent partial correlations  K = beta\n")
 print(round(K_vals, 4))
 
 # Evaluate all four causal quantities over XGRID.
 # ivar_gaussian is the bottleneck (numerical GH quadrature); total runtime is
-# 200 grid points × 3 cases × 20 GH nodes ≈ 12 000 pnorm() calls — typically
-# a few seconds.
+# 500 grid points × 3 cases × 20 GH nodes ≈ 30 000 pnorm() calls — typically
+# a few seconds on modern hardware.
 cat("\nComputing Gaussian causal quantities (numerical integration)...\n")
 
-res_gauss <- compute_causal_quantities(
-  mu_fn   = mu_gaussian,
-  ace_fn  = ace_gaussian,
-  ivar_fn = function(x, K) ivar_gaussian(x, K, gh = GH),
-  params  = K_vals,
-  xgrid   = XGRID
-)
+# Convert K_vals to list of SCALARS for compute_causal_quantities; clamp K≤0.999
+# to ensure sigma_x = √(1-K²) > 0 (prevents NaN in ivar_gaussian).
+K_list <- as.list(pmin(K_vals, 0.999))  
 
+res_gauss <- compute_causal_quantities(
+  mu_fn   = mu_gaussian,           # Eq. 5.17: μ(x) = Φ(K·Φ⁻¹(x))
+  ace_fn  = ace_gaussian,          # Eq. 5.18: ACE(x) = K·φ(Kt)/φ(t), t=Φ⁻¹(x)
+  ivar_fn = function(x, K) ivar_gaussian(x, K, GH),  # GH quadrature for Var[Φ(Y*)]
+  params  = K_list,                # List of 3 scalar K values (CaseA/B/C)
+  xgrid   = XGRID                  # 500-point grid [0.01,0.99]
+)
 cat("Done.\n")
 
 # ---- 3B  FGM copula ---------------------------------------------------------
+# Extract only the 2 parameters needed for FGM interventional quantities:
+# θ_{X,Y|Z} (direct effect) and θ_{Y,Z} (confounder strength). θ_{X,Z} cancels
+# analytically in do(X=x) via ∫F_{X|Z}(x|z)dz = x (Eq. 5.28).
+fgm_params_correct <- lapply(names(fgm_params), function(name) {
+  p <- fgm_params[[name]]
+  c(theta_xy_cond = unname(p["theta_xy_cond"]), theta_yz = unname(p["theta_yz"]))
+})
+names(fgm_params_correct) <- names(fgm_params)
 
-theta_vals <- sapply(fgm_params, function(p) p["theta"])
+# Extract θ_{X,Y|Z} values for tables/diagnostics (CaseA=0.40, CaseB=0.80, CaseC=0.20).
+theta_vals <- sapply(fgm_params_correct, function(p) p["theta_xy_cond"])
+names(theta_vals) <- names(fgm_params_correct)
+cat("\nFGM copula: θ_{X,Y|Z} values (vary by case)\n")
+print(round(theta_vals, 4))
 
-cat("\nFGM copula: dependence parameters  theta\n")
-print(theta_vals)
-cat("\nComputing FGM causal quantities (closed-form approximation)...\n")
+# Evaluate all four causal quantities over XGRID.
+# FGM quantities have closed forms (Eqs. 5.33, 5.35, 6.9.3); no numerical integration.
+cat("Computing FGM causal quantities (closed-form)...\n")
 
 res_fgm <- compute_causal_quantities(
-  mu_fn   = mu_fgm,
-  ace_fn  = ace_fgm,
-  ivar_fn = function(x, theta) ivar_fgm(x, theta),
-  params  = theta_vals,
-  xgrid   = XGRID
+  mu_fn   = mu_fgm,                # Eq. 5.33: μ(x) = ½ − α(1−2x)(1/6 − η²/90) [state-dependent]
+  ace_fn  = ace_fgm,               # Eq. 5.35: ACE(x) = α(15 − η²)/45 [constant in x]
+  ivar_fn = ivar_fgm,              # Derived: Var = 1/12 − α²(1−2x)²(1/6 − η²/90)² [max at median]
+  params  = fgm_params_correct,    # List of 3 named vectors (2 params each)
+  xgrid   = XGRID                  # Same 500-point grid
 )
-
 cat("Done.\n")
 
 
@@ -401,6 +471,7 @@ cat("Done.\n")
 CASE_NAMES <- c("Case A", "Case B", "Case C")
 
 cat("\n\n=== TABLE: Gaussian Copula – Causal Quantities ===\n")
+
 print_ace_table(
   res        = res_gauss,
   xgrid      = XGRID,
@@ -416,9 +487,86 @@ print_ace_table(
   xgrid      = XGRID,
   idx        = TABLE_IDX,
   case_names = CASE_NAMES,
-  param_vals = theta_vals,
-  param_name = "theta"
+  param_vals = sapply(fgm_params, function(p) p["theta_xy_cond"]),  # Extract θ_{X,Y|Z} only ✓
+  param_name = "θ_{X,Y|Z}"
 )
+
+
+# Purpose: Show that equal overall association strength (same Kendall's tau)
+# produces qualitatively different ACE profiles under the two families.
+# The Gaussian ACE varies across x (tail amplification); the FGM ACE is a
+# single constant.  This is the key message of Section 5.2.5.
+#
+# Calibration:
+#   Given a target tau, the two families require:
+#
+#   Gaussian:  K  = sin(pi * tau / 2)                [inverse of tau = 2/pi * arcsin(K)]
+#   FGM:       alpha = 9 * tau / 2                   [inverse of tau = 2*alpha/9]
+#              eta   = 0  (set to zero to isolate the direct-effect comparison;
+#                          confounding attenuation is a separate sensitivity exercise)
+#
+# At tau = 0.20 this yields K = sin(0.1*pi) ≈ 0.309  and  alpha = 0.90.
+
+TAU_MATCH <- 0.20   # Target Kendall's tau — change this to explore sensitivity
+
+# Calibrate Gaussian K from tau  (Eq. tau_gauss in paper)
+K_match <- sin(pi * TAU_MATCH / 2)
+
+# Calibrate FGM alpha from tau  (Eq. tau_fgm in paper); eta = 0 for isolation
+alpha_match <- 9 * TAU_MATCH / 2
+eta_match   <- 0
+
+# Build the FGM parameter vector expected by ace_fgm / mu_fgm
+fgm_match_params <- c(theta_xy_cond = alpha_match, theta_yz = eta_match)
+
+cat(sprintf(
+  "\n\n=== TABLE 8: Cross-Family ACE at Matched Kendall's Tau (tau = %.2f) ===\n",
+  TAU_MATCH))
+cat(sprintf(
+  "  Calibrated parameters:  Gaussian K = %.4f  |  FGM alpha = %.4f, eta = %.1f\n",
+  K_match, alpha_match, eta_match))
+cat(sprintf(
+  "  Verification:  tau_Gauss = 2/pi * arcsin(K) = %.4f  |  tau_FGM = 2*alpha/9 = %.4f\n\n",
+  (2/pi) * asin(K_match), 2 * alpha_match / 9))
+
+# ACE for FGM is a single constant (independent of x); compute it once
+ace_fgm_match <- ace_fgm(0.5, fgm_match_params)[1]   # value at any x is the same
+
+cat(sprintf(
+  "  FGM ACE is CONSTANT at %.4f across all treatment levels.\n",
+  ace_fgm_match))
+cat(sprintf(
+  "  Gaussian ACE varies; minimum at median, amplified at tails.\n\n"))
+
+# Print the table
+header8  <- sprintf("%-6s  %-18s  %-12s  %-12s  %-8s",
+                    "x", "ACE_Gaussian(x)", "ACE_FGM", "Ratio(G/F)", "comment")
+divider8 <- strrep("-", 64)
+cat(header8, "\n", divider8, "\n", sep = "")
+
+comments8 <- c("lower tail", "first quartile", "median (Gauss min)", "third quartile", "upper tail")
+for (k in seq_along(TABLE_IDX)) {
+  i   <- TABLE_IDX[k]
+  x_i <- XGRID[i]
+  ace_g <- ace_gaussian(x_i, K_match)
+  ace_f <- ace_fgm_match                     # constant; displayed for every row
+  ratio <- ace_g / ace_f
+  cat(sprintf("%-6.2f  %-18.4f  %-12.4f  %-12.4f  %s\n",
+              x_i, ace_g, ace_f, ratio, comments8[k]))
+}
+
+# Summary statistics that appear in the paper's prose
+amp_gauss <- (ace_gaussian(XGRID[IDX_TAIL], K_match) /
+                ace_gaussian(XGRID[IDX_MED],  K_match) - 1) * 100
+
+cat(sprintf(
+  "\n  Gaussian tail amplification (tail / median - 1): +%.0f%%\n", amp_gauss))
+cat(sprintf(
+  "  FGM tail amplification: 0%%  (ACE is constant by construction)\n"))
+cat(sprintf(
+  "  Ratio Gauss/FGM ranges from %.2f (median) to %.2f (tails)\n",
+  ace_gaussian(XGRID[IDX_MED],  K_match) / ace_fgm_match,
+  ace_gaussian(XGRID[IDX_TAIL], K_match) / ace_fgm_match))
 
 # ---- Diagnostics: tail amplification and confounding effects ----------------
 
@@ -474,7 +622,10 @@ cat(sprintf(
 
 # Assemble legend labels linking each curve to its parameter value
 labs_gauss <- sprintf("%s (K = %.2f)",     CASE_NAMES, K_vals)
-labs_fgm   <- sprintf("%s (theta = %.2f)", CASE_NAMES, theta_vals)
+labs_fgm <- sprintf("%s (θ_{XY|Z}=%.2f, θ_{YZ}=%.2f)", 
+                    CASE_NAMES, 
+                    sapply(fgm_params, function(p) p["theta_xy_cond"]),
+                    sapply(fgm_params, function(p) p["theta_yz"]))
 
 # ---- Figures 3 & 4: Two-panel plots (μ and ACE only)  -----------------------
 # These reproduce the original script's first two plotting blocks exactly
@@ -512,15 +663,68 @@ lines(XGRID, res_fgm$mu[, 3], lwd = 2, col = COLS[3], lty = LTYS[3])
 legend("topleft", legend = labs_fgm, col = COLS, lwd = 2, lty = LTYS, bty = "n")
 
 plot(XGRID, res_fgm$ace[, 1], type = "l", lwd = 2, col = COLS[1],
-     ylim = c(0, 1 + max(theta_vals)),
+     ylim = range(c(0, res_fgm$ace)),
      xlab = expression(x), ylab = expression(ACE(x)),
      main = expression("State-dependent ACE " ~ ACE(x) ~ "(FGM)"))
 lines(XGRID, res_fgm$ace[, 2], lwd = 2, col = COLS[2])
 lines(XGRID, res_fgm$ace[, 3], lwd = 2, col = COLS[3], lty = LTYS[3])
-abline(h = 1, lty = 3)
+abline(h = 0, lty = 3)
 legend("topright", legend = labs_fgm, col = COLS, lwd = 2, lty = LTYS, bty = "n")
 
-# ---- Figure 5: Gaussian four-panel (μ, ACE, SD, ACE_std) --------------------
+# ---- Figure 5: Gaussian 2-panel (SD, ACE_std) ----
+par(mfrow = c(1, 2), mar = c(4.5, 4.5, 3, 1))
+
+# Left panel: Interventional SD
+plot(XGRID, res_gauss$sd[, 1], type = "l", lwd = 2, col = COLS[1],
+     ylim = range(res_gauss$sd[is.finite(res_gauss$sd)]),
+     xlab = expression(x), ylab = expression(sigma^(X %down% "")(x)),
+     main = "(A) Interventional SD σ(x) (Gaussian)")
+lines(XGRID, res_gauss$sd[, 2], lwd = 2, col = COLS[2])
+lines(XGRID, res_gauss$sd[, 3], lwd = 2, col = COLS[3], lty = LTYS[3])
+legend("top", legend = labs_gauss, col = COLS, lwd = 2, lty = LTYS, bty = "n")
+
+# Right panel: Standardised ACE
+plot(XGRID, res_gauss$ace_std[, 1], type = "l", lwd = 2, col = COLS[1],
+     ylim = range(res_gauss$ace_std, na.rm = TRUE),
+     xlab = expression(x), ylab = expression(ACE[std](x)),
+     main = "(B) Standardised ACE ACE_std(x) (Gaussian)")
+lines(XGRID, res_gauss$ace_std[, 2], lwd = 2, col = COLS[2])
+lines(XGRID, res_gauss$ace_std[, 3], lwd = 2, col = COLS[3], lty = LTYS[3])
+abline(v = 0.5, lty = 3, col = "gray50")
+legend("topright", legend = labs_gauss, col = COLS, lwd = 2, lty = LTYS, bty = "n")
+
+# ---- Figure 6: FGM 2-panel (SD, ACE_std) ----
+par(mfrow = c(1, 2), mar = c(4.5, 4.5, 3, 1))
+
+# Left panel: Interventional SD (corrected FGM data, not Gaussian override)
+plot(XGRID, res_fgm$sd[, 1], type = "l", lwd = 2, col = COLS[1],
+     ylim = range(res_fgm$sd[is.finite(res_fgm$sd)]),
+     xlab = expression(x), ylab = expression(sigma^(X %down% "")(x)),
+     main = "(A) Interventional SD σ(x) (FGM)")
+lines(XGRID, res_fgm$sd[, 2], lwd = 2, col = COLS[2])
+lines(XGRID, res_fgm$sd[, 3], lwd = 2, col = COLS[3], lty = LTYS[3])
+legend("top", legend = labs_fgm, col = COLS, lwd = 2, lty = LTYS, bty = "n")
+
+# Right panel: Standardised ACE
+plot(XGRID, res_fgm$ace_std[, 1], type = "l", lwd = 2, col = COLS[1],
+     ylim = range(res_fgm$ace_std, na.rm = TRUE),
+     xlab = expression(x), ylab = expression(ACE[std](x)),
+     main = "(B) Standardised ACE ACE_std(x) (FGM)")
+lines(XGRID, res_fgm$ace_std[, 2], lwd = 2, col = COLS[2])
+lines(XGRID, res_fgm$ace_std[, 3], lwd = 2, col = COLS[3], lty = LTYS[3])
+abline(v = 0.5, lty = 3, col = "gray50")
+legend("topright", legend = labs_fgm, col = COLS, lwd = 2, lty = LTYS, bty = "n")
+
+# ---- Gaussian four-panel (μ, ACE, SD, ACE_std) --------------------
+par(mfrow = c(1, 1), mar = c(4.5, 4.5, 3, 1))
+ylim_g <- c(0, max(res_gauss$ace_std[is.finite(res_gauss$ace_std)], na.rm = TRUE))
+plot(XGRID, res_gauss$ace_std[, 1], type = "l", lwd = 3, col = COLS[1],
+     ylim = ylim_g, xlab = expression(x), ylab = expression(ACE[std](x)),
+     main = "Figure 5: Gaussian Copula – Standardised ACE")
+lines(XGRID, res_gauss$ace_std[, 2], lwd = 3, col = COLS[2])
+lines(XGRID, res_gauss$ace_std[, 3], lwd = 3, col = COLS[3], lty = LTYS[3])
+abline(v = 0.5, lty = 3, col = "gray50")
+legend("topright", legend = labs_gauss, col = COLS, lwd = 3, lty = LTYS, bty = "n")
 
 plot_four_panels(
   xgrid     = XGRID,
@@ -532,19 +736,19 @@ plot_four_panels(
   ace_ref   = 0
 )
 
-# ---- Figure 6: FGM four-panel -----------------------------------------------
+# ---- FGM four-panel -----------------------------------------------
 # Panel C is fed Gaussian SD data via sd_override to reproduce the original
 # code faithfully (see Section 1E docstring for explanation).
 
 plot_four_panels(
-  xgrid            = XGRID,
-  res              = res_fgm,
-  labs             = labs_fgm,
-  cols             = COLS,
-  ltys             = LTYS,
-  title_tag        = "(FGM)",
-  ace_ref          = 1,
-  ylim_from_zero   = TRUE
+  xgrid = XGRID,
+  res = res_fgm,
+  labs = labs_fgm,
+  cols = COLS,
+  ltys = LTYS,
+  title_tag = "(FGM)",
+  ace_ref = 1,
+  ylim_from_zero = TRUE  # Works perfectly with true FGM SD
 )
 
 # ---- Comparative figure: Gaussian vs FGM detectability (ACE_std) -------------
