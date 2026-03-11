@@ -20,8 +20,12 @@
 #     (d) Standardised ACE      ACE_std(x)  = ACE(x) / σ^(X↓)(x)  [Section 6.9]
 #
 # INPUTS  : none – all parameters are set inline in "Section 2 – Parameters".
-# OUTPUTS : console tables (Tables 1–6, 9–10 in the paper) and composite
+# OUTPUTS : console tables (Tables 1–6, 8–10 in the paper) and composite
 #           figures (Figures 3–6 in the paper).
+#           Table 7 (Gaussian vs. FGM qualitative comparison) is a prose grid
+#           with no computed quantities; it is not generated here.
+#           Table 8 (matched-tau cross-family ACE comparison) is generated in
+#           Section 4C below.
 #
 # PACKAGE DEPENDENCY
 #   pracma >= 2.3  (gaussHermite for the Gaussian variance integral)
@@ -102,12 +106,19 @@ ace_gaussian <- function(x, K) K * dnorm(K * qnorm(x)) / dnorm(qnorm(x))
 #'
 #' The latent structural equation Y* = K·X* + √(1−K²)·ε places
 #'   Y* | do(X = x)  ~  N( K·Φ⁻¹(x),  1−K² ).
-#' On the observable scale Y = Φ(Y*), so we need
-#'   E[ Φ(Y*)² ]  with  Y* ~ N(μ_x, σ_x²),
-#' which has no elementary closed form.  We evaluate it by Gauss–Hermite
-#' quadrature via the substitution  t = (Y* − μ_x) / (√2 · σ_x):
+#' On the observable scale Y = Φ(Y*), so:
+#'   Var[Y|do] = E[Φ(Y*)²] − (E[Φ(Y*)])²
 #'
-#'   E[ Φ(Y*)² ]  =  (1/√π) · Σ_i  w_i · Φ( μ_x + √2·σ_x·t_i )²
+#' E[Φ(Y*)] = Φ(K·Φ⁻¹(x) / √(2−K²))   [closed form via bivariate normal integral]
+#'
+#' E[Φ(Y*)²] has no elementary closed form and is evaluated by Gauss–Hermite
+#' quadrature via the substitution  t = (Y* − μ_x) / (√2 · σ_x):
+#'   E[Φ(Y*)²] = (1/√π) · Σ_i  w_i · Φ(μ_x + √2·σ_x·t_i)²
+#'
+#' NOTE: Using E_Y = mu_gaussian(x,K) = Φ(K·Φ⁻¹(x)) here would be INCORRECT:
+#' that formula is the paper's derived interventional mean via copula integration,
+#' NOT equal to E[Φ(Y*)].  The two differ by a factor of √(2−K²) in the argument.
+#' Using the wrong E_Y produces non-symmetric SD and NAs near the boundaries.
 #'
 #' @param x   Scalar treatment value in (0, 1)
 #' @param K   Latent partial correlation (scalar)
@@ -122,8 +133,8 @@ ivar_gaussian <- function(x, K, gh = GH) {
   # E[Φ(Y*)²] via the Gauss–Hermite rule  ∫ f(t)exp(−t²)dt ≈ Σ w_i f(t_i)
   E_Y2 <- sum(gh$w * pnorm(y_star)^2) / sqrt(pi)
   
-  # E[Y | do(X=x)] = μ(x) is available in closed form; reuse it here
-  E_Y <- mu_gaussian(x, K)
+  # E[Y | do(X=x)] = E[Φ(Y*)] = Φ(K·Φ⁻¹(x) / √(2−K²))   [FIX: symmetric formula]
+  E_Y <- pnorm(K * qnorm(x) / sqrt(2 - K^2))
   
   E_Y2 - E_Y^2
 }
@@ -227,22 +238,8 @@ compute_causal_quantities <- function(mu_fn, ace_fn, ivar_fn, params, xgrid) {
       var_j[i] <- ivar_fn(xgrid[i], p)  # SCALAR LOOP ✓
     }
     
-    # ---- NUMERICAL STABILISATION (FIX) ----
-    
-    # Remove negative variance values from quadrature cancellation
-    var_j[var_j < 0] <- NA_real_
-    
-    # Compute SD
-    sd_j <- sqrt(var_j)
-    
-    # Standardized ACE with protection against near-zero SD
-    ace_std_j <- ace_mat[, j] / sd_j
-    ace_std_j[sd_j < 1e-6] <- NA_real_
-    
-    # Store results
-    sd_mat[, j]      <- sd_j
-    ace_std_mat[, j] <- ace_std_j
-    
+    sd_mat[, j]      <- sqrt(pmax(1e-10, var_j))  # PREVENT NEGATIVE VAR
+    ace_std_mat[, j] <- ace_mat[, j] / sd_mat[, j]
   }
   
   list(mu = mu_mat, ace = ace_mat, sd = sd_mat, ace_std = ace_std_mat)
@@ -492,6 +489,11 @@ print_ace_table(
 )
 
 
+# ------------------------------------------------------------------------------
+# TABLE 8: Cross-Family ACE Comparison at Matched Kendall's Tau
+#     (Table 8 / tab:matched_tau in the paper, Section 5.2.5)
+# ------------------------------------------------------------------------------
+#
 # Purpose: Show that equal overall association strength (same Kendall's tau)
 # produces qualitatively different ACE profiles under the two families.
 # The Gaussian ACE varies across x (tail amplification); the FGM ACE is a
@@ -635,7 +637,7 @@ par(mfrow = c(1, 2), mar = c(4.5, 4.5, 3, 1))
 
 # Figure 3 – Gaussian
 plot(XGRID, res_gauss$mu[, 1], type = "l", lwd = 2, col = COLS[1],
-     ylim = range(res_gauss$mu),
+     ylim = c(0, 1),
      xlab = expression(x), ylab = expression(mu(x)),
      main = expression("Interventional mean " ~ mu(x)))
 lines(XGRID, res_gauss$mu[, 2], lwd = 2, col = COLS[2])
@@ -643,7 +645,7 @@ lines(XGRID, res_gauss$mu[, 3], lwd = 2, col = COLS[3], lty = LTYS[3])
 legend("topleft", legend = labs_gauss, col = COLS, lwd = 2, lty = LTYS, bty = "n")
 
 plot(XGRID, res_gauss$ace[, 1], type = "l", lwd = 2, col = COLS[1],
-     ylim = range(res_gauss$ace),
+     ylim = c(0, max(res_gauss$mu, na.rm=TRUE)),
      xlab = expression(x), ylab = expression(ACE(x)),
      main = expression("State-dependent ACE " ~ ACE(x)))
 lines(XGRID, res_gauss$ace[, 2], lwd = 2, col = COLS[2])
@@ -676,7 +678,7 @@ par(mfrow = c(1, 2), mar = c(4.5, 4.5, 3, 1))
 
 # Left panel: Interventional SD
 plot(XGRID, res_gauss$sd[, 1], type = "l", lwd = 2, col = COLS[1],
-     ylim = range(res_gauss$sd[is.finite(res_gauss$sd)]),
+     ylim = c(0, max(res_gauss$sd[is.finite(res_gauss$sd)], na.rm=TRUE)),
      xlab = expression(x), ylab = expression(sigma^(X %down% "")(x)),
      main = "(A) Interventional SD σ(x) (Gaussian)")
 lines(XGRID, res_gauss$sd[, 2], lwd = 2, col = COLS[2])
@@ -685,7 +687,7 @@ legend("top", legend = labs_gauss, col = COLS, lwd = 2, lty = LTYS, bty = "n")
 
 # Right panel: Standardised ACE
 plot(XGRID, res_gauss$ace_std[, 1], type = "l", lwd = 2, col = COLS[1],
-     ylim = range(res_gauss$ace_std, na.rm = TRUE),
+     ylim = c(0, max(res_gauss$ace_std, na.rm=TRUE)),
      xlab = expression(x), ylab = expression(ACE[std](x)),
      main = "(B) Standardised ACE ACE_std(x) (Gaussian)")
 lines(XGRID, res_gauss$ace_std[, 2], lwd = 2, col = COLS[2])
@@ -698,7 +700,7 @@ par(mfrow = c(1, 2), mar = c(4.5, 4.5, 3, 1))
 
 # Left panel: Interventional SD (corrected FGM data, not Gaussian override)
 plot(XGRID, res_fgm$sd[, 1], type = "l", lwd = 2, col = COLS[1],
-     ylim = range(res_fgm$sd[is.finite(res_fgm$sd)]),
+     ylim = c(0, max(res_fgm$sd[is.finite(res_fgm$sd)], na.rm=TRUE)),
      xlab = expression(x), ylab = expression(sigma^(X %down% "")(x)),
      main = "(A) Interventional SD σ(x) (FGM)")
 lines(XGRID, res_fgm$sd[, 2], lwd = 2, col = COLS[2])
@@ -707,7 +709,7 @@ legend("top", legend = labs_fgm, col = COLS, lwd = 2, lty = LTYS, bty = "n")
 
 # Right panel: Standardised ACE
 plot(XGRID, res_fgm$ace_std[, 1], type = "l", lwd = 2, col = COLS[1],
-     ylim = range(res_fgm$ace_std, na.rm = TRUE),
+     ylim = c(0, max(res_fgm$ace_std, na.rm=TRUE)),
      xlab = expression(x), ylab = expression(ACE[std](x)),
      main = "(B) Standardised ACE ACE_std(x) (FGM)")
 lines(XGRID, res_fgm$ace_std[, 2], lwd = 2, col = COLS[2])
@@ -716,16 +718,6 @@ abline(v = 0.5, lty = 3, col = "gray50")
 legend("topright", legend = labs_fgm, col = COLS, lwd = 2, lty = LTYS, bty = "n")
 
 # ---- Gaussian four-panel (μ, ACE, SD, ACE_std) --------------------
-par(mfrow = c(1, 1), mar = c(4.5, 4.5, 3, 1))
-ylim_g <- c(0, max(res_gauss$ace_std[is.finite(res_gauss$ace_std)], na.rm = TRUE))
-plot(XGRID, res_gauss$ace_std[, 1], type = "l", lwd = 3, col = COLS[1],
-     ylim = ylim_g, xlab = expression(x), ylab = expression(ACE[std](x)),
-     main = "Figure 5: Gaussian Copula – Standardised ACE")
-lines(XGRID, res_gauss$ace_std[, 2], lwd = 3, col = COLS[2])
-lines(XGRID, res_gauss$ace_std[, 3], lwd = 3, col = COLS[3], lty = LTYS[3])
-abline(v = 0.5, lty = 3, col = "gray50")
-legend("topright", legend = labs_gauss, col = COLS, lwd = 3, lty = LTYS, bty = "n")
-
 plot_four_panels(
   xgrid     = XGRID,
   res       = res_gauss,
