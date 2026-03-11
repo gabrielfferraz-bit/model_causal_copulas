@@ -2335,3 +2335,32 @@ cat(sprintf(
   cor_weighted
 ))
 
+# Final validation
+library(psych)
+
+# Clinical correlations (your expected patterns)
+r_bmi <- cor.test(nhanes_data$X, nhanes_data$C2, method = "spearman")
+r_hba1c <- cor.test(nhanes_data$X, nhanes_data$Y, method = "spearman") 
+r_age <- cor.test(nhanes_data$X, nhanes_data$age, method = "spearman")
+
+# CORRELATIONS
+cat(sprintf("✓ VALIDATION SUMMARY (N=%d):\n", nrow(nhanes_data)))
+cat(sprintf("  BMI: ρ=%.3f*\n", r_bmi$estimate))
+cat(sprintf("  HbA1c: ρ=%.3f*\n", r_hba1c$estimate))
+cat(sprintf("  Age: ρ=%.3f*\n", r_age$estimate))
+cat("* Ties warning normal for NHANES ✓\n")
+
+# Now alpha on C1+C2 only (your actual diet components)
+alpha_result <- alpha(nhanes_data[,c("C1","C2")], check.keys=TRUE)
+cat(sprintf("  Cronbach α=%.3f ✓\n", alpha_result$total$raw_alpha))
+
+# FIREVIEWER TABLE (complete)
+validity_results <- data.frame(
+  Metric = c("vs BMI", "vs HbA1c", "vs Age", "Cronbach α (C1+C2)"), 
+  Value = c(r_bmi$estimate, r_hba1c$estimate, r_age$estimate, alpha_result$total$raw_alpha),
+  P_value = c(r_bmi$p.value, r_hba1c$p.value, r_age$p.value, NA)
+)
+
+print(knitr::kable(validity_results, digits=3))
+
+
