@@ -2238,3 +2238,100 @@ cor.test(nhanes_data$X, nhanes_data$Y, method = "spearman")   # vs HbA1c (+ expe
 # 3. Age gradient (health consciousness increases with age)
 nhanes_data$age_cat <- cut(nhanes_data$age, c(20,40,60,80))
 tapply(nhanes_data$X, nhanes_data$age_cat, mean)  # Should increase
+
+## -----------------------------------------------------------------------------
+## HEI-2015 construct validity: merge HEI scores and compute correlations
+## -----------------------------------------------------------------------------
+
+# Packages
+library(heiscore)        # HEI-2015 scoring from NHANES FPED data
+library(heiscore.data)   # FPED + scoring standards
+library(dplyr)
+library(survey)
+
+## 1. Compute HEI-2015 "simple" total scores for NHANES 2017–2018
+
+hei_scores_raw <- heiscore::score(
+  method    = "simple",      # individual-level "simple" scoring
+  years     = "1718",        # NHANES 2017–2018 cycle
+  component = "total score", # HEI-2015 total score
+  demo      = NULL           # no subgrouping; one row per respondent
+)
+
+# Inspect structure once (optional)
+str(hei_scores_raw)
+
+# Keep only respondent ID and numeric total score; standardize types
+hei_scores <- hei_scores_raw %>%
+  transmute(
+    SEQN          = as.integer(SEQN),
+    HEI2015_score = as.numeric(score)
+  )
+
+## 2. Merge HEI scores into the analytic NHANES dataset
+
+# Ensure SEQN has the same type on both sides before joining
+nhanes_data <- nhanes_data %>%
+  mutate(SEQN = as.integer(SEQN)) %>%
+  left_join(hei_scores, by = "SEQN")
+
+## 3. Coverage diagnostics: how many analysis subjects have HEI scores?
+
+n_total <- nrow(nhanes_data)
+n_hei   <- sum(!is.na(nhanes_data$HEI2015_score))
+
+cat(sprintf(
+  "Non-missing HEI-2015 scores for %d of %d participants (%.1f%%)\n\n",
+  n_hei, n_total, 100 * n_hei / n_total
+))
+
+# Basic summary of the HEI total score (optional)
+summary(nhanes_data$HEI2015_score)
+
+## 4. Unweighted Spearman correlation between diet score X and HEI-2015
+
+hei_complete <- nhanes_data %>%
+  filter(!is.na(X), !is.na(HEI2015_score))
+
+cor_unweighted <- cor.test(
+  hei_complete$X,
+  hei_complete$HEI2015_score,
+  method = "spearman"
+)
+
+cat("Unweighted Spearman correlation between X and HEI-2015 total:\n")
+print(cor_unweighted)
+cat("\n")
+
+## 5. Design-weighted Spearman correlation (approximate, via rank covariance)
+
+# Create ranks for Spearman correlation
+hei_complete <- hei_complete %>%
+  mutate(
+    X_rank   = rank(X, ties.method = "average"),
+    HEI_rank = rank(HEI2015_score, ties.method = "average")
+  )
+
+# NHANES survey design using MEC exam weights (adjust variable names if needed)
+des <- svydesign(
+  ids     = ~SDMVPSU,
+  strata  = ~SDMVSTRA,
+  weights = ~WTMEC2YR,
+  data    = hei_complete,
+  nest    = TRUE
+)
+
+# Variance–covariance matrix of ranks under the complex survey design
+V <- svyvar(~ X_rank + HEI_rank, design = des)
+
+cov_XY <- V["X_rank", "HEI_rank"]
+var_X  <- V["X_rank", "X_rank"]
+var_Y  <- V["HEI_rank", "HEI_rank"]
+
+cor_weighted <- as.numeric(cov_XY / sqrt(var_X * var_Y))
+
+cat(sprintf(
+  "Design-weighted Spearman correlation (approx.) between X and HEI-2015 total: %.3f\n",
+  cor_weighted
+))
+
