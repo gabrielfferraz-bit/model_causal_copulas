@@ -1282,32 +1282,27 @@ plot_theta_curve <- function(results_zvar, xlab = "Income-to-poverty ratio (C1)"
 #' @return Summary table
 generate_comparison_summary <- function(results, quantiles = c(0.1, 0.25, 0.5, 0.75, 0.9)) {
   
-  # Converter list → data.frame automaticamente
+  # Convert list to data.frame if needed
   if(is.list(results) && !is.data.frame(results)) {
     results <- as.data.frame(results)
-    cat("CONVERTIDO: list → data.frame (", nrow(results), "linhas)\n", sep="")
-  }
-  
-  if(is.null(results) || !is.data.frame(results) || nrow(results) == 0) {
-    stop("ERRO: results inválido após conversão")
+    cat(sprintf("CONVERTED: list → data.frame (%d rows)\n", nrow(results)))
   }
   
   n_res <- nrow(results)
-  cat(sprintf("ANALISANDO: %d linhas\n", n_res))
+  cat(sprintf("ANALYZING: %d rows\n", n_res))
   
-  required_cols <- c("x", "mu_observational", "mu_interventional", "ace_interventional")
-  missing_cols <- required_cols[!required_cols %in% names(results)]
-  if(length(missing_cols) > 0) {
-    stop(sprintf("FALTAM: %s", paste(missing_cols, collapse = ", ")))
-  }
-  
-  # Calcular d_obs_dx
-  if(!"d_obs_dx" %in% names(results)) {
+  # Handle d_obs_dx - PRIORITIZE pre-calculated values
+  if("d_obs_dx" %in% names(results) && any(!is.na(results$d_obs_dx))) {
+    cat("  ✓ Using PRE-CALCULATED d_obs_dx\n")
+  } else {
+    cat("  ⚠ Computing d_obs_dx internally (low variance risk)\n")
     results$d_obs_dx <- rep(NA_real_, n_res)
+    # Central differences (interior points)
     for(i in 2:(n_res-1)) {
       results$d_obs_dx[i] <- (results$mu_observational[i+1] - results$mu_observational[i-1]) /
         (results$x[i+1] - results$x[i-1])
     }
+    # Forward/backward endpoints
     if(n_res >= 2) {
       results$d_obs_dx[1] <- (results$mu_observational[2] - results$mu_observational[1]) /
         (results$x[2] - results$x[1])
@@ -1316,59 +1311,72 @@ generate_comparison_summary <- function(results, quantiles = c(0.1, 0.25, 0.5, 0
     }
   }
   
-  # Resto da função (igual)...
+  # Extract quantile values FIRST (FIXES circular reference)
   x_quantile_vals <- quantile(results$x, quantiles, na.rm = TRUE)
   
+  # Pre-compute all values before creating data.frame
+  mu_int_vals <- sapply(x_quantile_vals, function(xq) {
+    idx <- which.min(abs(results$x - xq))
+    results$mu_interventional[idx]
+  })
+  
+  mu_obs_vals <- sapply(x_quantile_vals, function(xq) {
+    idx <- which.min(abs(results$x - xq))
+    results$mu_observational[idx]
+  })
+  
+  ace_vals <- sapply(x_quantile_vals, function(xq) {
+    idx <- which.min(abs(results$x - xq))
+    results$ace_interventional[idx]
+  })
+  
+  dobs_vals <- sapply(x_quantile_vals, function(xq) {
+    idx <- which.min(abs(results$x - xq))
+    results$d_obs_dx[idx]
+  })
+  
+  # NOW create summary table (all values ready)
   summary_table <- data.frame(
     Quantile = paste0(100 * quantiles, "%"),
     X = round(x_quantile_vals, 2),
-    mu_interventional = NA_real_,
-    mu_observational = NA_real_,
-    confounding_bias = NA_real_,
-    ace = NA_real_,
-    d_obs_dx = NA_real_
+    mu_interventional = round(mu_int_vals, 3),
+    mu_observational = round(mu_obs_vals, 3),
+    confounding_bias = round(mu_obs_vals - mu_int_vals, 4),  # FIXED: direct computation
+    ace = round(ace_vals, 3),
+    d_obs_dx = round(dobs_vals, 3)
   )
   
+  # Add standardized ACE if available
   if("ace_standardized" %in% names(results)) {
-    summary_table$ace_standardized <- NA_real_
+    ace_std_vals <- sapply(x_quantile_vals, function(xq) {
+      idx <- which.min(abs(results$x - xq))
+      results$ace_standardized[idx]
+    })
+    summary_table$ace_standardized <- round(ace_std_vals, 4)
   }
   
-  for(i in seq_along(quantiles)) {
-    idx <- which.min(abs(results$x - x_quantile_vals[i]))
-    summary_table$mu_interventional[i] <- round(results$mu_interventional[idx], 3)
-    summary_table$mu_observational[i]  <- round(results$mu_observational[idx], 3)
-    summary_table$confounding_bias[i]  <- round(results$mu_observational[idx] - results$mu_interventional[idx], 4)
-    summary_table$ace[i]               <- round(results$ace_interventional[idx], 3)
-    summary_table$d_obs_dx[i]          <- round(results$d_obs_dx[idx], 3)
-    
-    if("ace_standardized" %in% names(results)) {
-      summary_table$ace_standardized[i] <- round(results$ace_standardized[idx], 4)
-    }
-  }
-  
-  # Output publication-ready
+  # Print LaTeX table
   cat("\n", strrep("=", 80), "\n")
   cat("GENERIC COPULA: CONFOUNDING BIAS + SLOPE ANALYSIS\n")
   cat(strrep("=", 80), "\n\n")
-  
   print(knitr::kable(summary_table, digits = 4, format = "latex",
                      caption = "Table XX: Level + Slope Bias Decomposition"))
   
-  # Summary stats
+  # Slope summary statistics
   slope_bias <- summary_table$d_obs_dx - summary_table$ace
   cat(sprintf("\nSLOPE SUMMARY:\n"))
   cat(sprintf("Obs slope:  %.3f ± %.3f\n", 
-              mean(summary_table$d_obs_dx), sd(summary_table$d_obs_dx)))
+              mean(summary_table$d_obs_dx, na.rm=TRUE), 
+              sd(summary_table$d_obs_dx, na.rm=TRUE)))
   cat(sprintf("Causal ACE: %.3f ± %.3f\n", 
-              mean(summary_table$ace), sd(summary_table$ace)))
+              mean(summary_table$ace, na.rm=TRUE), 
+              sd(summary_table$ace, na.rm=TRUE)))
   cat(sprintf("Slope bias: %.3f (%.1f%% inflation)\n",
-              mean(slope_bias),
-              100 * mean(slope_bias) / abs(mean(summary_table$ace) + 1e-10)))
+              mean(slope_bias, na.rm=TRUE),
+              100 * mean(slope_bias, na.rm=TRUE) / abs(mean(summary_table$ace, na.rm=TRUE) + 1e-10)))
   
   return(summary_table)
 }
-
-
 
 
 ################################################################################

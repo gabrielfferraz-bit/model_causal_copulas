@@ -1,0 +1,5 @@
+Pair,Weighted_Spearman
+Diet-Income,0.152
+Diet-HbA1c,-0.003
+HbA1c-Income,-0.044
+Diet-HbA1c|Income,0.004

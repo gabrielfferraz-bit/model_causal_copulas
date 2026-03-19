@@ -1,0 +1,4 @@
+"Method","Mean_ACE","Std_ACE","X95._CI","SE","θ_range_.","vs_obs"
+"Generic Copulas (BIC)","-0.0013","-0.0172","-","-","-","✓"
+"Z-varying Copulas","-0.0010","-0.0130","-","-","19.5%","✓"
+"Bootstrap (PSU-stratified, B=1000)","-0.0012","-0.0158","[-0.0022, -0.0004]","0.0005","-","✓"

@@ -1,0 +1,3 @@
+Population,N,Method,Mean.ACE,X95..CI,SE,Std..ACE,p.0.05
+Global (All),3255,Generic Copulas (BIC),-0.0012,"[-0.0022, -0.0004]",0.0005,-0.0158,✓
+Low-Income Subgroup,1090,Generic Copulas (BIC),-0.0003,"[-0.0013, 0.0008]",0.0006,-0.0036,✗

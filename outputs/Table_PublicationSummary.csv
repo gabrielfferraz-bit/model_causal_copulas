@@ -1,0 +1,5 @@
+"Method","ACE","Status"
+"Generic Copulas",-0.001342,"Primary Result ✓"
+"Gaussian Copulas",0.002848,"Theorem Validation ✓"
+"Empirical Copulas",0,"Nonparametric ✓"
+"Causal Forest",0.001227,"External Benchmark ✓"

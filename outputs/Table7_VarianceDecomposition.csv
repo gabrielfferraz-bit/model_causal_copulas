@@ -1,0 +1,4 @@
+"Component","Variance","Percentage"
+"Total",1.17453664873765,100
+"Causal (X→Y)",0.00142079027061197,0.120966022826021
+"Residual (Confounding + Noise)",1.17311585846704,99.879033977174

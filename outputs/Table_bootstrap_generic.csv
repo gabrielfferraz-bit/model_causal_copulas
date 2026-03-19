@@ -1,0 +1,9 @@
+Statistic,Value
+Point Estimate (Mean ACE),-0.0012
+Standard Error,0.0005
+95% CI Lower,-0.0022
+95% CI Upper,-0.0004
+ACE Heterogeneity (SD),0.0006
+Standardized ACE,-0.0158
+Bootstrap Replicates,2000
+Success Rate,100.0%
