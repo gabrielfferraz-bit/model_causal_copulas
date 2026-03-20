@@ -1,0 +1,4 @@
+"Method","ACE_pp","RR","E_value"
+"Generic Copula","+-0.001","0.999","NaN"
+"Generic Copula (Lower CI)","+-0.003","0.997","NaN"
+"Gaussian Copulas","+0.003","1.003","1.05"

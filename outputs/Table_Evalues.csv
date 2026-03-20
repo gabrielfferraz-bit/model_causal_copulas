@@ -1,0 +1,4 @@
+"Method","ACE_pp","RR_approx","E_value","Interpretation"
+"Generic Copula (BIC-selected)","+0.044","1.041","1.25","Fragile: modest confounder (RR=1.12) explains away"
+"Generic Copula (Lower CI)","+0.015","1.014","1.13","CI bound: even weaker (RR=1.04)"
+"Gaussian Copulas","+0.484","1.556","2.49","Robust: implausibly strong confounder (RR=1.6)"
