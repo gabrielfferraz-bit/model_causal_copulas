@@ -3000,3 +3000,53 @@ grid()
 dev.off()
 
 cat("✓ Overlap figure saved\n\n")
+
+################################################################################
+# TREATMENT OVERLAP (POSITIVITY) DIAGNOSTICS FOR X (HEI-2015)
+################################################################################
+
+cat("\nChecking treatment overlap (positivity) for X...\n\n")
+
+# Compute X range within each C1 bin
+treatment_overlap_table <- nhanes_data %>%
+  group_by(C1_bin) %>%
+  summarise(
+    n = n(),
+    X_min = min(X, na.rm = TRUE),
+    X_max = max(X, na.rm = TRUE),
+    X_mean = weighted.mean(X, survey_weight, na.rm = TRUE)
+  )
+
+print(knitr::kable(treatment_overlap_table, digits = 3,
+                   caption = "Support of HEI-2015 (X) across income strata"))
+
+write_csv(treatment_overlap_table, "outputs/Table_Treatment_Overlap.csv")
+
+# Determine common support region for X
+x_lower <- max(treatment_overlap_table$X_min)
+x_upper <- min(treatment_overlap_table$X_max)
+
+cat(sprintf("Common support region for X: [%.2f, %.2f]\n", x_lower, x_upper))
+
+# Proportion of X observations in common support
+n_common_support_X <- nhanes_data %>%
+  filter(X >= x_lower & X <= x_upper) %>%
+  nrow()
+
+prop_common_X <- n_common_support_X / nrow(nhanes_data)
+cat(sprintf("Observations in common support for X: %d (%.1f%%)\n",
+            n_common_support_X, 100 * prop_common_X))
+
+# Visual check: boxplot of X across income bins
+pdf("outputs/Figure_Treatment_Overlap_Check.pdf", width = 6, height = 5)
+
+boxplot(X ~ C1_bin, data = nhanes_data,
+        col = "lightgreen",
+        main = "HEI-2015 Distribution Across Income Bins",
+        xlab = "Income-to-Poverty Ratio (C1)",
+        ylab = "HEI-2015")
+
+grid()
+dev.off()
+
+cat("✓ Treatment overlap figure saved\n\n")
