@@ -1,20 +1,8 @@
 ################################################################################
-# COPULA-BASED CAUSAL INFERENCE: CORRECTED IMPLEMENTATION
 # Direct Implementation of Theorem 4.1 and Corollaries from González-López et al (2026)
-#
-# KEY IMPROVEMENTS:
-#   1. Proper implementation of Proposition 4.1 (Interventional CDF)
-#   2. Correct conditional copula estimation C_{X,Y|Z}
-#   3. Implementation of Corollary 7.1 for observational comparison
-#   4. Consistent with simulation code approach
-#   5. Uses exact formulas from paper, not approximations
-#   6. FIXED: Numerical stability (adaptive epsilon, adaptive dx)
-#   7. FIXED: Generic copula implementation (actually uses fitted copulas)
-#   8. ADDED: Standardized ACE computation
-#   9. ADDED: Distributional inference (quantiles)
 ################################################################################
 
-# FIXED: Use machine epsilon for numerical stability
+# Use machine epsilon for numerical stability
 EPSILON <- .Machine$double.eps^0.5  # ≈ 1.5e-8
 
 ################################################################################
@@ -31,7 +19,7 @@ EPSILON <- .Machine$double.eps^0.5  # ≈ 1.5e-8
 #' @param rho_xz Copula correlation parameter
 #' @return Conditional CDF value
 compute_conditional_cdf_gaussian <- function(u_x, u_z, rho_xz) {
-  # FIXED: Use adaptive epsilon instead of fixed 1e-10
+  #  Use adaptive epsilon instead of fixed 1e-10
   u_x <- pmin(pmax(u_x, EPSILON), 1 - EPSILON)
   u_z <- pmin(pmax(u_z, EPSILON), 1 - EPSILON)
   
@@ -56,7 +44,7 @@ compute_conditional_cdf_gaussian <- function(u_x, u_z, rho_xz) {
 #' @param rho_xy_given_z Conditional copula correlation parameter
 #' @return Partial derivative value
 compute_partial_conditional_copula_gaussian <- function(u, v, rho_xy_given_z) {
-  # FIXED: Use adaptive epsilon
+  #  Use adaptive epsilon
   u <- pmin(pmax(u, EPSILON), 1 - EPSILON)
   v <- pmin(pmax(v, EPSILON), 1 - EPSILON)
   
@@ -172,7 +160,7 @@ compute_interventional_mean_cor41 <- function(x, y_grid, include_tail_correction
 #'
 #' @return ACE(x) value
 compute_ace_cor42 <- function(x, y_grid, dx = NULL, x_range = NULL, ...) {
-  # FIXED: Adaptive dx instead of fixed 0.01
+  #  Adaptive dx instead of fixed 0.01
   if(is.null(dx)) {
     if(!is.null(x_range)) {
       dx <- diff(range(x_range)) * 0.005  # 0.5% of range
@@ -256,13 +244,40 @@ compute_observational_cdf_cor71 <- function(y, x, z_grid, f_z_vals,
   return(integral)
 }
 
+#' Structural coefficient K for Theorem 5.1 (Gaussian closed form)
+#'
+#' K is the interventional-mean slope, NOT the conditional copula correlation
+#' rho_{XY|Z}. Regressing Y* on (X*, Z*) under the trivariate-normal
+#' representation gives
+#'   a = (rho_xy - rho_xz*rho_yz) / (1 - rho_xz^2)
+#'   b = (rho_yz - rho_xy*rho_xz) / (1 - rho_xz^2)
+#'   V = 1 - a^2 - 2*a*b*rho_xz          (= Var(Y* | do(X*=x*)))
+#'   K = a / sqrt(1 + V)
+#' rho_{XY|Z} equals K only when rho_xz = 0; using rho_{XY|Z} directly (as an
+#' earlier version of this file did at the call site below) silently returns
+#' the wrong closed-form mu/ace for every confounded case -- verified against
+#' Table 2 of the dissertation, e.g. (rho_xy,rho_xz,rho_yz)=(.70,.50,.60) gives
+#' K = 0.4301, not rho_{XY|Z} = 0.5774.
+#'
+#' @param rho_xy Unconditional correlation ρ_{X,Y}
+#' @param rho_xz Correlation ρ_{X,Z}
+#' @param rho_yz Correlation ρ_{Y,Z}
+#' @return K (scalar)
+compute_gaussian_K <- function(rho_xy, rho_xz, rho_yz) {
+  a <- (rho_xy - rho_xz * rho_yz) / (1 - rho_xz^2)
+  b <- (rho_yz - rho_xy * rho_xz) / (1 - rho_xz^2)
+  V <- 1 - a^2 - 2 * a * b * rho_xz
+  a / sqrt(1 + V)
+}
+
 #' THEOREM 5.1: Gaussian Closed-Form Solution (Validation)
 #'
 #' For Gaussian copulas, exact formula: μ_U(u_x) = Φ(K·Φ^{-1}(u_x))
-#' where K = ρ_{XY|Z} is the conditional copula correlation
+#' where K is the interventional-mean slope from compute_gaussian_K() above
+#' (K = a/sqrt(1+V) -- NOT rho_{XY|Z}; see that function's docstring)
 #'
 #' @param x Treatment value on original scale
-#' @param K Conditional copula correlation ρ_{XY|Z}
+#' @param K Interventional-mean slope, from compute_gaussian_K()
 #' @param F_X Marginal CDF for X
 #'
 #' @return List with mu (uniform scale) and ace (uniform scale)
@@ -428,7 +443,7 @@ compute_causal_effects_nhanes <- function(x_grid, nhanes_data,
     cat(sprintf("  Integration: %d Z points, %d Y points\n\n", 
                 length(z_grid), length(y_grid)))
     
-    # FIXED: Compute adaptive dx for ACE
+    #  Compute adaptive dx for ACE
     dx_adaptive <- diff(range(x_grid)) * 0.005
     
     # Compute for each x in grid
@@ -485,7 +500,9 @@ compute_causal_effects_nhanes <- function(x_grid, nhanes_data,
       
       # THEOREM 5.1: Gaussian closed-form (validation)
       if(method %in% c("gaussian", "both")) {
-        K <- rho_xy_given_z
+        # K = a/sqrt(1+V), NOT rho_xy_given_z (the conditional copula
+        # correlation) -- see compute_gaussian_K() docstring above.
+        K <- compute_gaussian_K(rho_xy, rho_xz, rho_yz)
         gauss_result <- compute_gaussian_closed_form_thm51(x, K, F_X)
         
         # Transform from uniform to Y scale
@@ -537,12 +554,12 @@ compute_causal_effects_nhanes <- function(x_grid, nhanes_data,
 }
 
 ################################################################################
-# FIXED: GENERIC COPULA IMPLEMENTATION (Actually uses fitted copulas now!)
+#  GENERIC COPULA IMPLEMENTATION (Actually uses fitted copulas now!)
 ################################################################################
 
 #' Compute Causal Effects using Generic (Data-Driven) Copulas
 #'
-#' FIXED: Now properly implements generic copulas using BiCopHfunc1/2
+#'  Now properly implements generic copulas using BiCopHfunc1/2
 #' This relaxes the Gaussian simplifying assumption (Remark 3.1)
 #'
 #' @param x_grid Grid of treatment values
@@ -592,7 +609,7 @@ compute_causal_effects_generic_nhanes <- function(x_grid, nhanes_data,
   cat(sprintf("  (X,Y): %s (τ=%.3f, par=%.3f)\n\n", 
               fit_xy$familyname, fit_xy$tau, fit_xy$par))
   
-  # FIXED: Define GENERIC conditional CDF functions using fitted copulas
+  #  Define GENERIC conditional CDF functions using fitted copulas
   F_x_given_z_func <- function(u_x, u_z) {
     # BiCopHfunc1 computes h-function: h(u|v) = P(U <= u | V = v)
     pmin(pmax(BiCopHfunc1(u_x, u_z, fit_xz), EPSILON), 1 - EPSILON)
@@ -636,7 +653,7 @@ compute_causal_effects_generic_nhanes <- function(x_grid, nhanes_data,
   
   cat("Computing causal effects with GENERIC copulas...\n")
   
-  # FIXED: Compute interventional CDF using GENERIC copulas
+  #  Compute interventional CDF using GENERIC copulas
   compute_interventional_cdf_generic <- function(y, x) {
     u_x <- F_X(x)
     u_y <- F_Y(y)
@@ -859,7 +876,7 @@ compute_causal_effects_empirical_nhanes <- function(x_grid,
       cat(sprintf("  x[%d/%d] = %.4f\n", i, length(x_grid), x_grid[i]))
     
     F_int_vals <- sapply(y_grid, compute_F_int, x_val = x_grid[i])
-    # **FIXED: Proper survival integration**
+    # ** Proper survival integration**
     S_int_vals <- 1 - F_int_vals
     results$mu_interventional[i] <- sum((S_int_vals[-1] + S_int_vals[-length(S_int_vals)]) / 2 * dy)
     
@@ -1341,7 +1358,7 @@ generate_comparison_summary <- function(results, quantiles = c(0.1, 0.25, 0.5, 0
     X = round(x_quantile_vals, 2),
     mu_interventional = round(mu_int_vals, 3),
     mu_observational = round(mu_obs_vals, 3),
-    confounding_bias = round(mu_obs_vals - mu_int_vals, 4),  # FIXED: direct computation
+    confounding_bias = round(mu_obs_vals - mu_int_vals, 4),  #  direct computation
     ace = round(ace_vals, 3),
     d_obs_dx = round(dobs_vals, 3)
   )

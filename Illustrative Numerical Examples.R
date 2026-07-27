@@ -70,13 +70,12 @@ LTYS <- c(1L, 1L, 2L)
 # 1A  Gaussian copula  (Section 5.1)
 # ------------------------------------------------------------------------------
 
-#' Latent partial correlation  K = ρ_{Y*X*·Z*}   (Theorem 5.1 / Eq. 5.1)
+#' Partial correlation  ρ_{X,Y|Z}  on the latent Gaussian scale
 #'
-#' Under the latent linear-Gaussian SEM with observable correlations (ryx, rxz,
-#' ryz), K equals both the partial correlation on the latent scale AND the
-#' conditional copula parameter ρ_{X,Y|Z}.  It is the single structural causal
-#' coefficient that fully determines all interventional quantities in the
-#' Gaussian model.
+#' This is the copula parameter of the CONDITIONAL copula C_{X,Y|Z} (it is
+#' what you would plug into a conditional-copula density). It is NOT the
+#' interventional-mean slope K -- see gaussian_K_and_V() below. The two
+#' coincide only in the degenerate case rxz = 0.
 #'
 #' @param ryx  Unconditional correlation ρ_{X,Y}
 #' @param rxz  Correlation ρ_{X,Z}
@@ -85,14 +84,47 @@ partial_corr_gaussian <- function(ryx, rxz, ryz) {
   (ryx - rxz * ryz) / sqrt((1 - rxz^2) * (1 - ryz^2))
 }
 
-#' Interventional mean  μ(x) = Φ(K · Φ⁻¹(x))   (Eq. 5.17)
+#' Structural coefficients of the Gaussian-copula interventional model
+#' (dissertation Sec. 5.6.1, Eqs. 5.22-5.26; step-by-step derivation in
+#' gauss.tex Sec. 4).
 #'
-#' This is E[Y | do(X = x)] on the observable uniform [0, 1] scale.  The
-#' composition Φ ∘ K ∘ Φ⁻¹ is a monotone S-curve that collapses to the
-#' identity when K = 1 and to the constant 0.5 when K = 0 (pure confounding).
+#' Regressing Y* on (X*, Z*) under the trivariate-normal representation gives
+#'   a = (ryx - rxz*ryz) / (1 - rxz^2),   b = (ryz - ryx*rxz) / (1 - rxz^2),
+#' and the interventional latent variance
+#'   V = 1 - a^2 - 2*a*b*rxz   =   Var(Y* | do(X* = x*)),
+#' so that  Y* | do(X* = x*) ~ N(a·x*, V)  exactly. Marginalising the probit
+#' link Φ over this normal gives the interventional-mean slope
+#'   K = a / sqrt(1 + V),   so that   μ(x) = Φ(K·Φ⁻¹(x)).
+#'
+#' IMPORTANT: K is NOT the partial correlation ρ_{X,Y|Z} returned by
+#' partial_corr_gaussian() above (they coincide only when rxz = 0). Treating
+#' ρ_{X,Y|Z} as K -- as an earlier version of this script did -- silently
+#' returns the wrong interventional mean/ACE for every confounded case. This
+#' was checked against Table 2 of the dissertation: at (ryx, rxz, ryz) =
+#' (0.70, 0.50, 0.60) the correct value is K = 0.4301; ρ_{X,Y|Z} there is
+#' 0.5774. See gauss.tex Sec. 4.4 for the full derivation and error analysis.
+#'
+#' @param ryx  Unconditional correlation ρ_{X,Y}
+#' @param rxz  Correlation ρ_{X,Z}
+#' @param ryz  Correlation ρ_{Y,Z}
+#' @return Named vector c(a=, b=, V=, K=)
+gaussian_K_and_V <- function(ryx, rxz, ryz) {
+  a <- (ryx - rxz * ryz) / (1 - rxz^2)
+  b <- (ryz - ryx * rxz) / (1 - rxz^2)
+  V <- 1 - a^2 - 2 * a * b * rxz
+  K <- a / sqrt(1 + V)
+  c(a = unname(a), b = unname(b), V = unname(V), K = unname(K))
+}
+
+#' Interventional mean  μ(x) = Φ(K · Φ⁻¹(x))   (Eq. 5.26)
+#'
+#' This is E[Y | do(X = x)] on the observable uniform [0, 1] scale, with K
+#' from gaussian_K_and_V(). The composition Φ ∘ K ∘ Φ⁻¹ is a monotone S-curve
+#' that collapses to the identity when K = 1 and to the constant 0.5 when
+#' K = 0 (pure confounding).
 mu_gaussian <- function(x, K) pnorm(K * qnorm(x))
 
-#' Average Causal Effect  ACE(x) = d/dx μ(x)   (Eq. 5.18)
+#' Average Causal Effect  ACE(x) = d/dx μ(x)   (Eq. 5.27)
 #'
 #' = K · φ(K · Φ⁻¹(x)) / φ(Φ⁻¹(x))
 #'
@@ -104,28 +136,32 @@ ace_gaussian <- function(x, K) K * dnorm(K * qnorm(x)) / dnorm(qnorm(x))
 
 #' Interventional variance  Var[Y | do(X = x)]   for the Gaussian copula
 #'
-#' The latent structural equation Y* = K·X* + √(1−K²)·ε places
-#'   Y* | do(X = x)  ~  N( K·Φ⁻¹(x),  1−K² ).
-#' On the observable scale Y = Φ(Y*), so:
+#' The latent structural equation (dissertation Sec. 5.6.1; gauss.tex Sec. 4)
+#' places  Y* | do(X = x)  ~  N( a·Φ⁻¹(x),  V ),  with (a, V) as returned by
+#' gaussian_K_and_V() -- NOT N(K·Φ⁻¹(x), 1-K²): K alone does not determine V
+#' (different (a, V) pairs can share the same K = a/√(1+V)), so both must be
+#' supplied. On the observable scale Y = Φ(Y*), so:
 #'   Var[Y|do] = E[Φ(Y*)²] − (E[Φ(Y*)])²
 #'
-#' E[Φ(Y*)] = Φ(K·Φ⁻¹(x) / √(2−K²))   [closed form via bivariate normal integral]
+#' E[Φ(Y*)] = Φ(a·Φ⁻¹(x) / √(1+V)) = Φ(K·Φ⁻¹(x)) = mu_gaussian(x, K) exactly,
+#' by construction of K -- there is no separate "/√(2−K²)" correction to
+#' layer on top of K (an earlier version of this function assumed Y*|do ~
+#' N(K·x*, 1−K²), i.e. that K itself parametrised a bivariate-normal pair;
+#' that is the same mis-identification of K with ρ_{X,Y|Z} flagged above and
+#' does not hold once Z is a genuine third variable).
 #'
 #' E[Φ(Y*)²] has no elementary closed form and is evaluated by Gauss–Hermite
 #' quadrature via the substitution  t = (Y* − μ_x) / (√2 · σ_x):
 #'   E[Φ(Y*)²] = (1/√π) · Σ_i  w_i · Φ(μ_x + √2·σ_x·t_i)²
 #'
-#' NOTE: Using E_Y = mu_gaussian(x,K) = Φ(K·Φ⁻¹(x)) here would be INCORRECT:
-#' that formula is the paper's derived interventional mean via copula integration,
-#' NOT equal to E[Φ(Y*)].  The two differ by a factor of √(2−K²) in the argument.
-#' Using the wrong E_Y produces non-symmetric SD and NAs near the boundaries.
-#'
 #' @param x   Scalar treatment value in (0, 1)
-#' @param K   Latent partial correlation (scalar)
+#' @param K   Interventional-mean slope, K = a/sqrt(1+V)
+#' @param V   Interventional latent variance, V = 1-a^2-2ab·rxz
 #' @param gh  Gauss–Hermite rule; list with $x (nodes) and $w (weights)
-ivar_gaussian <- function(x, K, gh = GH) {
-  mu_x    <- K * qnorm(x)          # conditional mean on latent scale
-  sigma_x <- sqrt(1 - K^2)         # conditional SD on latent scale
+ivar_gaussian <- function(x, K, V, gh = GH) {
+  a_coef  <- K * sqrt(1 + V)       # recover the latent slope a from (K, V)
+  mu_x    <- a_coef * qnorm(x)     # TRUE conditional mean on latent scale
+  sigma_x <- sqrt(V)               # TRUE conditional SD on latent scale
   
   # Shift and scale the GH nodes to the Y* ~ N(μ_x, σ_x²) distribution
   y_star <- mu_x + sqrt(2) * sigma_x * gh$x
@@ -133,8 +169,8 @@ ivar_gaussian <- function(x, K, gh = GH) {
   # E[Φ(Y*)²] via the Gauss–Hermite rule  ∫ f(t)exp(−t²)dt ≈ Σ w_i f(t_i)
   E_Y2 <- sum(gh$w * pnorm(y_star)^2) / sqrt(pi)
   
-  # E[Y | do(X=x)] = E[Φ(Y*)] = Φ(K·Φ⁻¹(x) / √(2−K²))   [FIX: symmetric formula]
-  E_Y <- pnorm(K * qnorm(x) / sqrt(2 - K^2))
+  # E[Y | do(X=x)] = E[Φ(Y*)] = Φ(K·Φ⁻¹(x)); identical to mu_gaussian(x, K)
+  E_Y <- pnorm(K * qnorm(x))
   
   E_Y2 - E_Y^2
 }
@@ -370,8 +406,8 @@ plot_four_panels <- function(xgrid, res, labs, cols, ltys,
 # to match Sections 5.1.8 and 5.2.4 of the paper.
 
 # ---- 2A  Gaussian copula: observable pairwise correlations ------------------
-# K is derived below via partial_corr_gaussian(); it is the only parameter
-# that enters the Gaussian interventional formulas.
+# K and V are derived below via gaussian_K_and_V(); both are needed by the
+# Gaussian interventional formulas (K for mu/ACE, K and V for the variance).
 
 gauss_params <- list(
   CaseA = c(ryx = 0.70, rxz = 0.50, ryz = 0.60),   # moderate confounding
@@ -401,15 +437,17 @@ fgm_params <- list(
 # ==============================================================================
 
 # ---- 3A  Gaussian copula ----------------------------------------------------
-# Derive the structural parameter K for each confounding scenario via Theorem 5.1.
-# K = ρ_{Y*X*|Z*} = partial correlation on latent Gaussian scale = copula parameter ρ_{X,Y|Z}.
-K_vals <- sapply(names(gauss_params), function(name) {
-  p <- gauss_params[[name]]
-  partial_corr_gaussian(p["ryx"], p["rxz"], p["ryz"])
+# Derive the structural coefficients (a, b, V, K) for each confounding
+# scenario via gaussian_K_and_V() (Theorem 5.1 / Eq. 5.26). K is the
+# interventional-mean slope a/sqrt(1+V); it is NOT the partial correlation
+# rho_{X,Y|Z} (see the function docstring above).
+gauss_coeffs <- lapply(gauss_params, function(p) {
+  gaussian_K_and_V(p["ryx"], p["rxz"], p["ryz"])
 })
+K_vals <- sapply(gauss_coeffs, function(cc) cc["K"])
 names(K_vals) <- names(gauss_params)
 
-cat("Gaussian copula: latent partial correlations  K = beta\n")
+cat("Gaussian copula: interventional-mean slopes  K = a / sqrt(1+V)\n")
 print(round(K_vals, 4))
 
 # Evaluate all four causal quantities over XGRID.
@@ -418,15 +456,20 @@ print(round(K_vals, 4))
 # a few seconds on modern hardware.
 cat("\nComputing Gaussian causal quantities (numerical integration)...\n")
 
-# Convert K_vals to list of SCALARS for compute_causal_quantities; clamp K≤0.999
-# to ensure sigma_x = √(1-K²) > 0 (prevents NaN in ivar_gaussian).
-K_list <- as.list(pmin(K_vals, 0.999))  
+# Each case must carry both K and V for compute_causal_quantities: ivar_gaussian
+# needs V explicitly, since K alone does not determine it (different (a, V)
+# pairs can share the same K = a/sqrt(1+V)). V > 0 automatically whenever the
+# implied 3x3 correlation matrix of (X*,Y*,Z*) is positive-definite, i.e. for
+# any (ryx, rxz, ryz) that are jointly realisable as correlations -- no
+# artificial clamp is needed here (contrast the old sqrt(1-K^2) model, whose
+# fragility near |K|=1 was a symptom of the wrong variance formula).
+K_list <- gauss_coeffs   # list of c(a=,b=,V=,K=) vectors, one per case
 
 res_gauss <- compute_causal_quantities(
-  mu_fn   = mu_gaussian,           # Eq. 5.17: μ(x) = Φ(K·Φ⁻¹(x))
-  ace_fn  = ace_gaussian,          # Eq. 5.18: ACE(x) = K·φ(Kt)/φ(t), t=Φ⁻¹(x)
-  ivar_fn = function(x, K) ivar_gaussian(x, K, GH),  # GH quadrature for Var[Φ(Y*)]
-  params  = K_list,                # List of 3 scalar K values (CaseA/B/C)
+  mu_fn   = function(x, p) mu_gaussian(x, p["K"]),               # Eq. 5.26: μ(x) = Φ(K·Φ⁻¹(x))
+  ace_fn  = function(x, p) ace_gaussian(x, p["K"]),              # Eq. 5.27: ACE(x) = K·φ(Kt)/φ(t), t=Φ⁻¹(x)
+  ivar_fn = function(x, p) ivar_gaussian(x, p["K"], p["V"], GH), # GH quadrature for Var[Φ(Y*)]
+  params  = K_list,                # List of 3 named vectors c(a=,b=,V=,K=) (CaseA/B/C)
   xgrid   = XGRID                  # 500-point grid [0.01,0.99]
 )
 cat("Done.\n")

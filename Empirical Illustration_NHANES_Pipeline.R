@@ -12,13 +12,6 @@
 #   7. Bootstrap Inference (IMPROVED)
 #   8. Distributional Inference (ADDED)
 #   9. Visualization and Results
-#
-# FIXED: Variable naming bugs (results_s1 → results_gaussian)
-# FIXED: Hard-coded paths (now relative)
-# ADDED: Standardized ACE
-# ADDED: Variance decomposition
-# ADDED: Sensitivity analysis
-# ADDED: Distributional outputs
 ################################################################################
 
 script_start_time <- Sys.time()
@@ -60,14 +53,12 @@ invisible(lapply(optional_packages, function(pkg) {
 }))
 cat("\n")
 
-# FIXED: Load improved implementation (exact filename match)
-if(file.exists("Empirical Illustration_NHANES_functions.R")) {
-  source("Empirical Illustration_NHANES_functions.R")
-  cat("✓ Sourced Empirical Illustration_NHANES_functions.R → Copula pipeline loaded!\n")
-} else {
-  stop("Cannot find Empirical Illustration_NHANES_functions.R - run diagnostics again")
-}
-
+# Load improved implementation (exact filename match -- must match the
+# underscore-only filename of the companion functions file on disk; the
+# previous version of this call used a space after "Empirical" and would
+# stop() immediately since that file never exists).
+setwd("E:\\User\\Gabriel\\Unicamp\\Mestrado\\model_causal_copulas")
+source("Empirical Illustration_NHANES_Pipeline.R")
 
 cat("\n", strrep("=", 80), "\n")
 cat("COMPLETE NHANES COPULA CAUSAL INFERENCE PIPELINE\n")
@@ -76,7 +67,7 @@ cat(strrep("=", 80), "\n\n")
 
 
 # FIXED: Create outputs directory if it doesn't exist
-if(!dir.exists("outputs")) {
+if(!dir.exists("E:\\User\\Gabriel\\Unicamp\\Mestrado\\model_causal_copulas\\outputs")) {
   dir.create("outputs", recursive = TRUE)
   cat("Created outputs/ directory\n\n")
 }
@@ -1594,6 +1585,16 @@ for(idx in seq_along(x_representative)) {
   rho_xy_given_z <- (rho_xy - rho_xz*rho_yz) / den
   rho_xy_given_z <- max(min(rho_xy_given_z, 0.99), -0.99)
   
+  # STRUCTURAL REGRESSION COEFFICIENTS for Y* = a*X* + b*Z* + eps (dissertation
+  # Sec. 5.6.1; gauss.tex Sec. 4). These feed the TRUE conditional mean of Y*
+  # given (X*,Z*) below. NOTE: a and b are NOT rho_xy_given_z and rho_yz --
+  # those coincide only when rho_xz = 0; using them directly as regression
+  # coefficients (as an earlier version of this block did) understates or
+  # overstates the interventional CDF depending on the sign/strength of rho_xz.
+  den_a  <- max(1 - rho_xz^2, 1e-8)
+  a_coef <- (rho_xy - rho_xz*rho_yz) / den_a
+  b_coef <- (rho_yz - rho_xy*rho_xz) / den_a
+  
   cat(sprintf("    ρ_XZ=%.3f, ρ_XY=%.3f, ρ_YZ=%.3f, ρ_XY|Z=%.3f\n", 
               rho_xz, rho_xy, rho_yz, rho_xy_given_z))
   
@@ -1624,9 +1625,15 @@ for(idx in seq_along(x_representative)) {
       zy <- qnorm(uy)
       zz <- qnorm(uz)
       
-      # Conditional mean and variance of Y | X,Z
-      mu_y_xz <- rho_xy_given_z * zx + rho_yz * zz
-      sd_y_xz <- sqrt(pmax(1 - rho_yz^2, 1e-8))
+      # Conditional mean and variance of Y* | X*,Z* (dissertation Sec. 5.6.1):
+      #   Y* | X*=x*, Z*=z* ~ N(a*x* + b*z*, sigma_eps^2),
+      #   sigma_eps = sd_yz * sd_xygz = sqrt((1-rho_yz^2)(1-rho_xy_given_z^2))
+      # (previously: rho_xy_given_z*zx + rho_yz*zz with SD sqrt(1-rho_yz^2) --
+      # wrong mean, since rho_xy_given_z is not a regression slope; and wrong
+      # variance, since it silently dropped the (1-rho_xy_given_z^2) factor
+      # that sd_xygz above was already computing but never using.)
+      mu_y_xz <- a_coef * zx + b_coef * zz
+      sd_y_xz <- sd_yz * sd_xygz
       
       # Evaluate CDF of Y given X,Z
       integrand[i] <- pnorm((zy - mu_y_xz) / sd_y_xz) * pmax(f_z_vals[i], 0)

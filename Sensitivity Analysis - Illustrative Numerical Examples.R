@@ -126,27 +126,52 @@ TABLE_IDX <- sapply(TABLE_X, function(x) which.min(abs(XGRID - x)))
 # between this script and Illustrative_Numerical_Examples.R would be a bug.
 
 # ---- 1A  Gaussian copula formulas -------------------------------------------
+# CORRECTED to match Illustrative_Numerical_Examples.R (dissertation Sec. 5.6.1;
+# derivation in gauss.tex Sec. 4). The previous version of this block set
+# K <- partial_corr_gaussian(...) = rho_{X,Y|Z}, which is NOT the
+# interventional-mean slope: K = a/sqrt(1+V), and the two agree only when
+# rxz = 0. That mis-identification silently corrupted mu_gaussian, ace_gaussian,
+# ivar_gaussian, and everything downstream (M_x, mu_obs, oracle bounds,
+# delta_crit) for every confounded case in this script.
 
-# Latent partial correlation  K = ρ_{Y*X*·Z*}   (Theorem 5.1 / Eq. 5.1)
+# Partial correlation ρ_{X,Y|Z} on the latent scale -- the CONDITIONAL copula
+# parameter of C_{X,Y|Z}. NOT the interventional-mean slope K (see below).
 partial_corr_gaussian <- function(ryx, rxz, ryz) {
   (ryx - rxz * ryz) / sqrt((1 - rxz^2) * (1 - ryz^2))
 }
 
-# Interventional mean  μ(x) = Φ(K·Φ⁻¹(x))   (Eq. 5.17)
+# Structural coefficients of the Gaussian interventional model (Eq. 5.22-5.26):
+#   a = (ryx - rxz*ryz)/(1-rxz^2),  b = (ryz - ryx*rxz)/(1-rxz^2)
+#   V = 1 - a^2 - 2*a*b*rxz  =  Var(Y* | do(X*=x*))
+#   K = a / sqrt(1+V)        =  interventional-mean slope, mu(x) = Phi(K*Phi^-1(x))
+# Verified against dissertation Table 2: (ryx,rxz,ryz)=(.70,.50,.60) -> K=0.4301.
+gaussian_K_and_V <- function(ryx, rxz, ryz) {
+  a <- (ryx - rxz * ryz) / (1 - rxz^2)
+  b <- (ryz - ryx * rxz) / (1 - rxz^2)
+  V <- 1 - a^2 - 2 * a * b * rxz
+  K <- a / sqrt(1 + V)
+  c(a = unname(a), b = unname(b), V = unname(V), K = unname(K))
+}
+
+# Interventional mean  μ(x) = Φ(K·Φ⁻¹(x))   (Eq. 5.26)
 mu_gaussian <- function(x, K) pnorm(K * qnorm(x))
 
-# ACE(x) = d/dx μ(x) = K·φ(K·Φ⁻¹(x)) / φ(Φ⁻¹(x))   (Eq. 5.18)
+# ACE(x) = d/dx μ(x) = K·φ(K·Φ⁻¹(x)) / φ(Φ⁻¹(x))   (Eq. 5.27)
 ace_gaussian <- function(x, K) K * dnorm(K * qnorm(x)) / dnorm(qnorm(x))
 
-# Interventional variance via Gauss–Hermite quadrature (Eq. derived in paper)
-# IMPORTANT: E[Y|do] = Φ(K·Φ⁻¹(x)/√(2−K²)), NOT mu_gaussian(x,K) — see
-# detailed note in parent script for why these differ.
-ivar_gaussian <- function(x, K, gh = GH) {
-  mu_x    <- K * qnorm(x)
-  sigma_x <- sqrt(1 - K^2)
+# Interventional variance via Gauss–Hermite quadrature.
+# Y*|do(X=x) ~ N(a·Φ⁻¹(x), V) exactly (a, V from gaussian_K_and_V(), recovered
+# here from (K,V) via a = K*sqrt(1+V)). Consequently E[Y|do] = Φ(K·Φ⁻¹(x)) =
+# mu_gaussian(x,K) -- NOT Φ(K·Φ⁻¹(x)/√(2−K²)): that extra shrinkage wrongly
+# treated K as if it directly parametrised a bivariate-normal (X*,Y*) pair,
+# which double-applies the latent-to-observed shrinkage already built into K.
+ivar_gaussian <- function(x, K, V, gh = GH) {
+  a_coef  <- K * sqrt(1 + V)
+  mu_x    <- a_coef * qnorm(x)
+  sigma_x <- sqrt(V)
   y_star  <- mu_x + sqrt(2) * sigma_x * gh$x
   E_Y2    <- sum(gh$w * pnorm(y_star)^2) / sqrt(pi)
-  E_Y     <- pnorm(K * qnorm(x) / sqrt(2 - K^2))
+  E_Y     <- pnorm(K * qnorm(x))
   pmax(0, E_Y2 - E_Y^2)   # clamp numerical noise to [0, ∞)
 }
 
@@ -274,10 +299,10 @@ delta_fgm_exact <- function(x, beta) {
 #     M_gauss(x) = min(1, μ(x) + 2σ(x))
 # This is conservative (overestimates) for small ρ_{XZ}, which is correct:
 # the bound |B| ≤ M·δ must hold for ALL possible confounders with that δ.
-M_gauss <- function(x, K, gh = GH) {
+M_gauss <- function(x, K, V, gh = GH) {
   mu_x    <- mu_gaussian(x, K)
   # Interventional SD at this x
-  var_x   <- ivar_gaussian(x, K, gh)
+  var_x   <- ivar_gaussian(x, K, V, gh)
   sd_x    <- sqrt(pmax(0, var_x))
   pmin(1.0, mu_x + 2 * sd_x)   # cap at 1 (Y ∈ [0,1])
 }
@@ -311,12 +336,15 @@ gauss_params <- list(
   CaseC = c(ryx = 0.70, rxz = 0.80, ryz = 0.60)    # strong confounding
 )
 
-# Derive latent partial correlation K for each case
-K_vals <- sapply(names(gauss_params), function(nm) {
-  p <- gauss_params[[nm]]
-  partial_corr_gaussian(p["ryx"], p["rxz"], p["ryz"])
+# Derive the interventional-mean slope K = a/sqrt(1+V) and latent variance V
+# for each case via gaussian_K_and_V() (NOT the partial correlation rho_{X,Y|Z}
+# returned by partial_corr_gaussian() -- see Section 1A note above).
+gauss_coeffs <- lapply(gauss_params, function(p) {
+  gaussian_K_and_V(p["ryx"], p["rxz"], p["ryz"])
 })
-names(K_vals) <- names(gauss_params)
+K_vals <- sapply(gauss_coeffs, function(cc) cc["K"])
+V_vals <- sapply(gauss_coeffs, function(cc) cc["V"])
+names(K_vals) <- names(V_vals) <- names(gauss_params)
 
 # ---- 3B  FGM parameters -----------------------------------------------------
 fgm_params <- list(
@@ -329,7 +357,7 @@ fgm_params <- list(
 cat(strrep("=", 79), "\n")
 cat("SECTION 3: PARAMETERS\n")
 cat(strrep("=", 79), "\n\n")
-cat("Gaussian cases — latent partial correlations K:\n")
+cat("Gaussian cases — interventional-mean slopes K = a/sqrt(1+V):\n")
 for (nm in names(K_vals)) {
   p <- gauss_params[[nm]]
   cat(sprintf("  %-6s: ρ_YX=%.2f  ρ_XZ=%.2f  ρ_YZ=%.2f  →  K=%.4f\n",
@@ -356,10 +384,10 @@ cat("\n")
 cat("Computing oracle quantities over x-grid (this takes ~10 seconds)...\n")
 
 # Helper: build the full result frame for one Gaussian case
-compute_gauss_case <- function(K, rho_xz) {
+compute_gauss_case <- function(K, V, rho_xz) {
   mu_x    <- mu_gaussian(XGRID, K)
   ace_x   <- ace_gaussian(XGRID, K)
-  var_x   <- sapply(XGRID, function(xi) ivar_gaussian(xi, K, GH))
+  var_x   <- sapply(XGRID, function(xi) ivar_gaussian(xi, K, V, GH))
   sd_x    <- sqrt(pmax(0, var_x))
   M_x     <- pmin(1.0, mu_x + 2 * sd_x)   # M(x): outcome sensitivity
   delta_x <- delta_gauss_exact(XGRID, rho_xz)   # oracle δ(x)
@@ -422,9 +450,9 @@ compute_fgm_case <- function(params) {
 
 # ---- Compute Gaussian cases -------------------------------------------------
 gauss_res <- list(
-  CaseA = compute_gauss_case(K_vals["CaseA"], gauss_params$CaseA["rxz"]),
-  CaseB = compute_gauss_case(K_vals["CaseB"], gauss_params$CaseB["rxz"]),
-  CaseC = compute_gauss_case(K_vals["CaseC"], gauss_params$CaseC["rxz"])
+  CaseA = compute_gauss_case(K_vals["CaseA"], V_vals["CaseA"], gauss_params$CaseA["rxz"]),
+  CaseB = compute_gauss_case(K_vals["CaseB"], V_vals["CaseB"], gauss_params$CaseB["rxz"]),
+  CaseC = compute_gauss_case(K_vals["CaseC"], V_vals["CaseC"], gauss_params$CaseC["rxz"])
 )
 
 # ---- Compute FGM cases ------------------------------------------------------
