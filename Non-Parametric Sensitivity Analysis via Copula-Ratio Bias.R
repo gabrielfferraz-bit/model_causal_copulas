@@ -1,6 +1,6 @@
 # ==============================================================================
 # SENSITIVITY ANALYSIS UNDER LATENT CONFOUNDING -- CORRECTED
-# Copula-Based Causal Inference -- Master's Dissertation, Chapter 6
+# Copula-Based Causal Inference -- Master's Dissertation, Chapter 5
 # Ferraz (2026)
 # ==============================================================================
 #
@@ -121,7 +121,7 @@ delta_gauss_firstorder <- function(x, rho_xz) {
 # ---- 2B. delta(x) for the FGM copula: EXACT (unchanged; verified correct) ---
 delta_fgm <- function(x, beta) abs(beta) * abs(1 - 2*x) / 2
 
-# ---- 2C. M(x): Proposition 6.4.2 (Manski / support bound) -- PRIMARY --------
+# ---- 2C. M(x): Proposition 5.4.2 (Manski / support bound) -- PRIMARY --------
 # M(x) <= ybar = max(|ymin|,|ymax|). For Y in [0,1], ybar = 1. This requires
 # NO assumption about the confounding mechanism -- it uses only Y's own
 # observed range, which is exactly what is available when Z is latent.
@@ -129,7 +129,7 @@ M_manski <- function(ymin = 0, ymax = 1) max(abs(ymin), abs(ymax))
 
 # ---- 2C'. OPTIONAL structural M(x) heuristics -- SECONDARY, opt-in only ----
 # These require the analyst to additionally assume a specific parametric
-# mechanism linking Z to Y (Section 6.4.2, option (a)). They are retained
+# mechanism linking Z to Y (Section 5.4.2, option (a)). They are retained
 # here ONLY for illustrating how much a structural assumption could tighten
 # the bound relative to the assumption-free Manski ceiling -- never used as
 # the default under latent confounding.
@@ -144,7 +144,7 @@ M_fgm_structural <- function(x, params) {
   pmin(0.5, abs(alpha*A*(1-2*x)) + abs(alpha)*A*abs(beta))
 }
 
-# ---- 2D. Delta_crit(x): Definition 6.4.1 ------------------------------------
+# ---- 2D. Delta_crit(x): Definition 5.4.1 ------------------------------------
 # B(x) := mu(x) - mu_obs(x)  [List of Symbols / Eq. 6.1 sign convention;
 # NOTE this is the OPPOSITE sign from Eq. (5.28), which the dissertation
 # should harmonise -- see write-up]. delta_crit is sign-convention-free.
@@ -152,9 +152,9 @@ delta_crit <- function(mu_obs, M_x, null_value = 0) {
   abs(mu_obs - null_value) / pmax(1e-8, M_x)
 }
 
-# ---- 2E. tau_crit(x): Corollary 6.4.1 (continuous-treatment E-value) -------
+# ---- 2E. tau_crit(x): Corollary 5.4.1 (continuous-treatment E-value) -------
 # Uses the SAME first-order Gaussian tau->rho->delta map as Lemma 6.3.1 (this
-# is what Corollary 6.4.1 itself is built on -- it is explicitly a first-order
+# is what Corollary 5.4.1 itself is built on -- it is explicitly a first-order
 # statement in the dissertation, so tau_crit inherits that same qualifier).
 tau_crit_gaussian <- function(delta_crit_x, x) {
   kappa <- sqrt(2/pi)
@@ -167,13 +167,13 @@ tau_crit_fgm <- function(delta_crit_x, x) {
 }
 
 # ---- 2F. tau_crit(x), Gaussian, EXACT (numerical root-finding) -------------
-# Corollary 6.4.1 is explicitly a first-order statement (built on Lemma 6.3.1)
+# Corollary 5.4.1 is explicitly a first-order statement (built on Lemma 6.3.1)
 # and degenerates at x=0.5 (delta_gauss_firstorder(0.5,.) = 0 for every rho,
 # so the ratio used inside tau_crit_gaussian() is undefined there). Now that
 # delta_gauss() is available via quadrature, tau_crit can instead be obtained
 # by directly solving delta_gauss(x, rho) = delta_crit_x for rho, then mapping
 # rho -> tau. This removes the first-order restriction and the x=0.5
-# degeneracy; offered here as a drop-in upgrade for Corollary 6.4.1.
+# degeneracy; offered here as a drop-in upgrade for Corollary 5.4.1.
 tau_crit_gaussian_exact <- function(delta_crit_x, x) {
   mapply(function(dcx, xi) {
     if (dcx <= 0) return(0)
@@ -241,7 +241,7 @@ regimeB_table$tau_crit_gaussian <- tau_crit_gaussian(regimeB_table$delta_crit, r
 
 # Sweep delta_max in [0, 2] (Remark 6.2.1's universal ceiling) and record,
 # for each x, whether the sign of mu_obs is guaranteed preserved
-# (Proposition 6.4.1(1)): sign is safe iff delta_max < Delta_crit(x).
+# (Proposition 5.4.1(1)): sign is safe iff delta_max < Delta_crit(x).
 DELTA_SWEEP <- seq(0, 2, length.out = 400)
 robustness_grid <- expand.grid(x = c(0.10,0.25,0.50,0.75,0.90), delta_max = DELTA_SWEEP)
 robustness_grid$mu_obs <- mu_obs_gaussian(robustness_grid$x)
@@ -319,11 +319,11 @@ cat("At x=0.25: delta_hat =", round(calibrated_table$delta_hat[idx],4),
 # ==============================================================================
 # Two free axes: delta(x) in [0, DELTA_MAX_PLOT] (treatment-side: L1 copula-
 # ratio deviation, Def. 4.3.1) and M(x) in [0, ybar] (outcome-side: Manski
-# ceiling, Prop. 6.4.2). z = M*delta is exactly the RHS of the Hoelder bound
+# ceiling, Prop. 5.4.2). z = M*delta is exactly the RHS of the Hoelder bound
 # (Prop. 6.2.2). The critical isoline z = |mu_obs(x)| is the exact boundary of
-# Proposition 6.4.1: below/left, the sign of mu_obs(x) is GUARANTEED preserved
+# Proposition 5.4.1: below/left, the sign of mu_obs(x) is GUARANTEED preserved
 # for every confounding mechanism consistent with (M,delta); on/above it,
-# Proposition 6.4.1(2)'s construction shows a sign-reversing mechanism exists.
+# Proposition 5.4.1(2)'s construction shows a sign-reversing mechanism exists.
 # This generalises the 1-D Delta_crit(x) (= the point where the critical curve
 # crosses M = ybar) into the full 2-D robustness boundary.
 suppressMessages(library(ggrepel))
@@ -395,7 +395,7 @@ fig_contour_delta_M <- ggplot(contour_df, aes(x = delta, y = M)) +
     title = "Sensitivity contour plot under latent confounding (Regime B, \u00a76.4)",
     subtitle = paste0(
       "Filled contours: bound M(x)\u00b7\u03b4(x) on |B(x)| (Prop. 6.2.2). Dashed curve: the critical\n",
-      "isoline M\u00b7\u03b4 = |\u03bc_obs(x)| (Prop. 6.4.1) \u2014 above/right of it the sign of \u03bc_obs(x) is no longer guaranteed.\n",
+      "isoline M\u00b7\u03b4 = |\u03bc_obs(x)| (Prop. 5.4.1) \u2014 above/right of it the sign of \u03bc_obs(x) is no longer guaranteed.\n",
       "Diamond: \u03b4 as strong as the observed \u03c1_XY. Circles: \u03b4 at Kendall's \u03c4 = 0.10/0.20/0.30."),
     x = "\u03b4(x)  [L\u00b9 copula-ratio sensitivity index]",
     y = "M(x)  [outcome-sensitivity ceiling; Manski ceiling ybar=1 at top edge]"
@@ -453,8 +453,7 @@ fig_contour_tau_M <- ggplot(contour_tau_df, aes(x = tau, y = M)) +
   coord_cartesian(xlim = c(0, TAU_MAX_PLOT), ylim = c(0, YBAR), expand = FALSE) +
   labs(
     title = "Same bound, calibrated to Kendall's \u03c4 (Gaussian X\u2013Z copula, exact map)",
-    subtitle = paste0("x-axis recalibrated via \u03c4 \u2192 \u03c1=sin(\u03c0\u03c4/2) \u2192 \u03b4(x,\u03c1) (numerical quadrature, not the\n",
-                       "broken closed form). Dotted line: \u03c4(X,Y), i.e. a confounder as strongly\n",
+    subtitle = paste0("x-axis recalibrated via \u03c4 \u2192 \u03c1=sin(\u03c0\u03c4/2) \u2192 \u03b4(x,\u03c1). Dotted line: \u03c4(X,Y), i.e. a confounder as strongly\n",
                        "associated with X as Y itself already is \u2014 a natural, estimable benchmark."),
     x = "Kendall's \u03c4(X,Z)  [hypothesised confounder\u2013treatment rank association]",
     y = "M(x)"
@@ -477,12 +476,12 @@ profile_df$tau_crit_exact <- tau_crit_gaussian_exact(profile_df$delta_crit, prof
 df_long <- rbind(
   data.frame(x = profile_df$x, value = profile_df$delta_crit, quantity = "Delta_crit(x)  [copula-ratio scale]"),
   data.frame(x = profile_df$x, value = profile_df$tau_crit_exact, quantity = "tau_crit(x), exact  [Kendall's tau scale]"),
-  data.frame(x = profile_df$x, value = profile_df$tau_crit_firstorder, quantity = "tau_crit(x), first-order (Cor. 6.4.1 as written)")
+  data.frame(x = profile_df$x, value = profile_df$tau_crit_firstorder, quantity = "tau_crit(x), first-order (Cor. 5.4.1 as written)")
 )
 df_long$quantity <- factor(df_long$quantity, levels = c(
   "Delta_crit(x)  [copula-ratio scale]",
   "tau_crit(x), exact  [Kendall's tau scale]",
-  "tau_crit(x), first-order (Cor. 6.4.1 as written)"))
+  "tau_crit(x), first-order (Cor. 5.4.1 as written)"))
 
 fig_delta_crit_profile <- ggplot(df_long, aes(x = x, y = value, colour = quantity, linetype = quantity)) +
   geom_hline(yintercept = c(0.10,0.20,0.30), colour = "grey85", linewidth = 0.4) +
@@ -492,9 +491,9 @@ fig_delta_crit_profile <- ggplot(df_long, aes(x = x, y = value, colour = quantit
   scale_y_continuous(limits = c(0,1.05), breaks = seq(0,1,0.25)) +
   labs(
     title = "Tipping point under latent confounding: Delta_crit(x) and tau_crit(x)",
-    subtitle = paste0("Solid black: Delta_crit(x) = |\u03bc_obs(x)| / M(x), with the RIGOROUS M(x)=ybar=1 (Prop. 6.4.2) \u2014\n",
+    subtitle = paste0("Solid black: Delta_crit(x) = |\u03bc_obs(x)| / M(x), with the RIGOROUS M(x)=ybar=1 (Prop. 5.4.2) \u2014\n",
                        "note Delta_crit(x) = \u03bc_obs(x) exactly once M(x) is constant. Blue: the corresponding \u03c4_crit\n",
-                       "computed exactly (root-finding on the quadrature-based \u03b4); pale dashed: Corollary 6.4.1 as\n",
+                       "computed exactly (root-finding on the quadrature-based \u03b4); pale dashed: Corollary 5.4.1 as\n",
                        "currently written (first-order only) \u2014 note it degenerates near x=0.5, where it is uninformative."),
     x = "Treatment quantile x", y = NULL
   ) +
@@ -518,7 +517,7 @@ fig_validation <- ggplot(val_plot_df, aes(x = x)) +
     title = "Validation: the Hoelder bound |B(x)| \u2264 M(x)\u00b7\u03b4(x) (Prop. 6.2.2), checked on a case with Z observed",
     subtitle = paste0("Orange: true bias B(x)=\u03bc(x)\u2212\u03bc_obs(x) (both objects fully computable here since \u03c1_XZ, \u03c1_YZ are\n",
                        "known). Blue band: \u00b1 the theorem's bound, using the CORRECTED \u03b4(x) [quadrature] and M(x)=1\n",
-                       "[Prop. 6.4.2]. The bound holds everywhere, as it must \u2014 but note how much slack there is:\n",
+                       "[Prop. 5.4.2]. The bound holds everywhere, as it must \u2014 but note how much slack there is:\n",
                        "the actual bias uses only ~2\u201310% of the ceiling the theorem allows for."),
     x = "Treatment quantile x", y = "B(x)  (orange)  vs.  \u00b1M(x)\u00b7\u03b4(x)  (blue band)"
   ) +
@@ -643,7 +642,7 @@ CH_RVq <- function(f_YD_X, q = 1) {
 # ==============================================================================
 # (1) EXTREME SCENARIO (their Sec. 4.3 / R2_Y~D|X): fix the outcome-side
 #     sensitivity parameter at its ceiling (their R2_Y~Z|D,X=1; our M(x)=ybar,
-#     Prop. 6.4.2) and solve for the treatment-side parameter that zeroes the
+#     Prop. 5.4.2) and solve for the treatment-side parameter that zeroes the
 #     estimate. This is EXACTLY Delta_crit(x) as already defined -- no new
 #     construction needed, the correspondence is exact by definition:
 #         C-H:  set R2_Y~Z|D,X=1  ->  solve R2_D~Z|X = R2_Y~D|X
@@ -733,7 +732,7 @@ fig_extreme_scenario <- ggplot(extreme_df, aes(x = delta, y = adj, colour = labe
   labs(
     title = paste0("Sensitivity to extreme scenarios (Cinelli-Hazlett Fig. 3, reproduced), x=", EXTREME_X),
     subtitle = paste0("Solid black: confounder's outcome-sensitivity assumed at its full, assumption-free ceiling\n",
-                       "M(x)=ybar (worst case, Prop. 6.4.2). Blue/pale: willing to additionally assume M(x) is only\n",
+                       "M(x)=ybar (worst case, Prop. 5.4.2). Blue/pale: willing to additionally assume M(x) is only\n",
                        "75%/50% of that ceiling. Horizontal line: where the adjusted estimate crosses zero."),
     x = "delta(x)  [confounder-treatment association, copula-ratio scale]",
     y = "adjusted mu(x) = mu_obs(x) - M(x)\u00b7delta(x)"
