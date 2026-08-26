@@ -6,8 +6,8 @@
 #
 # This replaces Sensitivity_Analysis_-_Illustrative_Numerical_Examples.R.
 # Every numerical/theoretical issue identified in review is fixed here; the
-# script is reorganised around Chapter 6's own Regime A / Regime B structure,
-# with GENUINE LATENT CONFOUNDING (Regime B, Section 6.4) as the primary
+# script is reorganised around Chapter 5's own Regime A / Regime B structure,
+# with GENUINE LATENT CONFOUNDING (Regime B, Section 5.4) as the primary
 # analysis rather than a hypothetical "oracle" framing.
 #
 # WORKFLOW
@@ -106,7 +106,7 @@ delta_gauss <- function(x, rho_xz) {
     if (abs(ri) < 1e-10) return(0)
     f <- function(v) abs(copula_density_gaussian(xi, v, ri) - 1)
     stats::integrate(f, lower = 1e-9, upper = 1 - 1e-9,
-                      subdivisions = 400, rel.tol = 1e-8)$value
+                     subdivisions = 400, rel.tol = 1e-8)$value
   }, x, rho_xz)
 }
 
@@ -145,15 +145,15 @@ M_fgm_structural <- function(x, params) {
 }
 
 # ---- 2D. Delta_crit(x): Definition 5.4.1 ------------------------------------
-# B(x) := mu(x) - mu_obs(x)  [List of Symbols / Eq. 6.1 sign convention;
-# NOTE this is the OPPOSITE sign from Eq. (5.28), which the dissertation
-# should harmonise -- see write-up]. delta_crit is sign-convention-free.
+# B(x) := mu(x) - mu_obs(x)  [List of Symbols sign convention; NOTE this is
+# the OPPOSITE sign from the dissertation's B(x):=mu_obs(x)-mu(x) (Ch. 4),
+# which should be harmonised -- see write-up]. delta_crit is sign-convention-free.
 delta_crit <- function(mu_obs, M_x, null_value = 0) {
   abs(mu_obs - null_value) / pmax(1e-8, M_x)
 }
 
 # ---- 2E. tau_crit(x): Corollary 5.4.1 (continuous-treatment E-value) -------
-# Uses the SAME first-order Gaussian tau->rho->delta map as Lemma 6.3.1 (this
+# Uses the SAME first-order Gaussian tau->rho->delta map as Lemma 5.3.1 (this
 # is what Corollary 5.4.1 itself is built on -- it is explicitly a first-order
 # statement in the dissertation, so tau_crit inherits that same qualifier).
 tau_crit_gaussian <- function(delta_crit_x, x) {
@@ -161,13 +161,13 @@ tau_crit_gaussian <- function(delta_crit_x, x) {
   arg <- pmin(1, delta_crit_x / (kappa * abs(qnorm(x))))
   (2/pi) * asin(arg)
 }
-# Exact FGM inversion (Section 6.3.2): delta = (9*tau/4)*|1-2x|  =>  tau = 4*delta/(9|1-2x|)
+# Exact FGM inversion (Section 5.3.2): delta = (9*tau/4)*|1-2x|  =>  tau = 4*delta/(9|1-2x|)
 tau_crit_fgm <- function(delta_crit_x, x) {
   pmin(1, 4 * delta_crit_x / (9 * abs(1 - 2*x)))
 }
 
 # ---- 2F. tau_crit(x), Gaussian, EXACT (numerical root-finding) -------------
-# Corollary 5.4.1 is explicitly a first-order statement (built on Lemma 6.3.1)
+# Corollary 5.4.1 is explicitly a first-order statement (built on Lemma 5.3.1)
 # and degenerates at x=0.5 (delta_gauss_firstorder(0.5,.) = 0 for every rho,
 # so the ratio used inside tau_crit_gaussian() is undefined there). Now that
 # delta_gauss() is available via quadrature, tau_crit can instead be obtained
@@ -222,11 +222,11 @@ fgm_params_VALIDATION_ONLY <- list(
 cat("Section 3 loaded. mu_obs(x) uses ONLY rho_XY =", RHO_XY, "-> K0 =", round(K0,4), "\n")
 # ==============================================================================
 # SECTION 4 -- REGIME B: TIPPING-POINT ANALYSIS UNDER GENUINE LATENT
-#               CONFOUNDING (Section 6.4). THIS IS THE PRIMARY ANALYSIS.
+#               CONFOUNDING (Section 5.4). THIS IS THE PRIMARY ANALYSIS.
 # ==============================================================================
 # Inputs used: mu_obs(x) [estimable from (X,Y) alone] and ybar [Y's KNOWN
 # support]. NOTHING about rho_XZ, rho_YZ, or any copula family is assumed.
-# delta(x) is NOT computed -- it is genuinely unknown, exactly as Section 6.4
+# delta(x) is NOT computed -- it is genuinely unknown, exactly as Section 5.4
 # describes, and is treated purely as a free parameter in Section 7's contour
 # plots and in the sweep below.
 
@@ -239,7 +239,7 @@ regimeB_table$M      <- YBAR
 regimeB_table$delta_crit <- delta_crit(regimeB_table$mu_obs, regimeB_table$M)
 regimeB_table$tau_crit_gaussian <- tau_crit_gaussian(regimeB_table$delta_crit, regimeB_table$x)
 
-# Sweep delta_max in [0, 2] (Remark 6.2.1's universal ceiling) and record,
+# Sweep delta_max in [0, 2] (Remark 5.2.1's universal ceiling) and record,
 # for each x, whether the sign of mu_obs is guaranteed preserved
 # (Proposition 5.4.1(1)): sign is safe iff delta_max < Delta_crit(x).
 DELTA_SWEEP <- seq(0, 2, length.out = 400)
@@ -261,15 +261,16 @@ print(round(regimeB_table[TABLE_IDX, c("x","mu_obs","M","delta_crit","tau_crit_g
 # LOOSE it is) in a case where Z happens to be fully specified, so mu(x) and
 # delta_true(x) are both computable exactly. This section is NOT part of the
 # latent-confounding workflow (Section 4/7) -- it exists purely to sanity-check
-# the theorem numerically on a known example, exactly as Examples 6.5.1-6.5.3
-# do. B(x) := mu(x) - mu_obs(x)  [List of Symbols / Eq. 6.1 sign convention].
+# the theorem numerically on a known example, exactly as Examples 5.5.1-5.5.3
+# do. B(x) := mu(x) - mu_obs(x)  [List of Symbols sign convention -- opposite
+# of the dissertation's B(x):=mu_obs(x)-mu(x) in Ch. 4; see note in Section 2D].
 
 validation_table <- do.call(rbind, lapply(names(gauss_params_VALIDATION_ONLY), function(nm) {
   p <- gauss_params_VALIDATION_ONLY[[nm]]
   cc <- gaussian_K_and_V(p["ryx"], p["rxz"], p["ryz"])
   mu_true <- mu_gaussian(XGRID, cc["K"])
   mu_obs_ <- mu_obs_gaussian(XGRID)          # K0-based, same curve for all 3 cases
-  B_true  <- mu_true - mu_obs_                # Eq. 6.1 sign convention
+  B_true  <- mu_true - mu_obs_                # script sign convention (opposite of Ch. 4's B(x))
   d_true  <- delta_gauss(XGRID, p["rxz"])
   bound   <- YBAR * d_true                     # rigorous M(x) = ybar = 1
   data.frame(case = nm, x = XGRID, mu_true = mu_true, mu_obs = mu_obs_,
@@ -283,12 +284,12 @@ idx <- sapply(c(0.10,0.25,0.50,0.75,0.90), function(x) which.min(abs(XGRID-x)))
 print(round(subset(validation_table, case=="CaseA")[idx, c("x","mu_true","mu_obs","B_true","delta_true","bound")], 4))
 cat("(mean |B_true| / bound, i.e. how loose the Hoelder ceiling is on average):\n")
 print(tapply(validation_table$B_true, validation_table$case, function(b) mean(abs(b))) /
-      tapply(validation_table$bound,  validation_table$case, mean))
+        tapply(validation_table$bound,  validation_table$case, mean))
 # ==============================================================================
 # SECTION 6 -- REGIME A: CALIBRATED SCENARIO (tau-hat +/- SE), CORRECTED
 # ==============================================================================
-# Section 6.3.2. If an external estimate tau_hat +/- SE_tau of Kendall's tau
-# for (X,Z) becomes available (e.g. a validation sub-sample, Section 6.3.1),
+# Section 5.3.2. If an external estimate tau_hat +/- SE_tau of Kendall's tau
+# for (X,Z) becomes available (e.g. a validation sub-sample, Section 5.3.1),
 # this converts into a delta(x) band via the EXACT (quadrature) Gaussian map
 # -- previously this used the broken delta_gauss_exact() formula.
 TAU_HAT <- 0.15
@@ -315,7 +316,7 @@ cat("At x=0.25: delta_hat =", round(calibrated_table$delta_hat[idx],4),
     " (previous script's WRONG formula reported 0.3700 here)\n")
 # ==============================================================================
 # SECTION 7 -- SENSITIVITY CONTOUR PLOTS (Cinelli-Hazlett / VanderWeele-Ding
-#               style), for GENUINE latent confounding (Regime B, Section 6.4)
+#               style), for GENUINE latent confounding (Regime B, Section 5.4)
 # ==============================================================================
 # Two free axes: delta(x) in [0, DELTA_MAX_PLOT] (treatment-side: L1 copula-
 # ratio deviation, Def. 4.3.1) and M(x) in [0, ybar] (outcome-side: Manski
@@ -334,7 +335,7 @@ N_GRID <- 220
 make_contour_grid <- function(x_val) {
   mu_x <- mu_obs_gaussian(x_val)
   g <- expand.grid(delta = seq(0, DELTA_MAX_PLOT, length.out = N_GRID),
-                    M     = seq(0, YBAR, length.out = N_GRID))
+                   M     = seq(0, YBAR, length.out = N_GRID))
   g$bound <- g$delta * g$M
   g$x <- x_val
   g$mu_obs <- mu_x
@@ -384,9 +385,9 @@ fig_contour_delta_M <- ggplot(contour_df, aes(x = delta, y = M)) +
   geom_point(data = bench_df, aes(x = delta, y = M_plot, shape = type),
              colour = "black", size = 1.4) +
   geom_text_repel(data = bench_df, aes(x = delta, y = M_plot, label = label),
-                   size = 2.4, colour = "grey15", segment.size = 0.25,
-                   min.segment.length = 0, max.overlaps = 20,
-                   nudge_y = -0.12, direction = "y", seed = 1) +
+                  size = 2.4, colour = "grey15", segment.size = 0.25,
+                  min.segment.length = 0, max.overlaps = 20,
+                  nudge_y = -0.12, direction = "y", seed = 1) +
   scale_fill_viridis_d(name = "M(x)\u00b7\u03b4(x)\n(bound on |B(x)|)", option = "magma", direction = -1) +
   scale_shape_manual(values = c("tau benchmark" = 21, "rho_XY benchmark" = 23), guide = "none") +
   facet_wrap(~x_label, nrow = 1) +
@@ -454,7 +455,7 @@ fig_contour_tau_M <- ggplot(contour_tau_df, aes(x = tau, y = M)) +
   labs(
     title = "Same bound, calibrated to Kendall's \u03c4 (Gaussian X\u2013Z copula, exact map)",
     subtitle = paste0("x-axis recalibrated via \u03c4 \u2192 \u03c1=sin(\u03c0\u03c4/2) \u2192 \u03b4(x,\u03c1). Dotted line: \u03c4(X,Y), i.e. a confounder as strongly\n",
-                       "associated with X as Y itself already is \u2014 a natural, estimable benchmark."),
+                      "associated with X as Y itself already is \u2014 a natural, estimable benchmark."),
     x = "Kendall's \u03c4(X,Z)  [hypothesised confounder\u2013treatment rank association]",
     y = "M(x)"
   ) +
@@ -492,9 +493,10 @@ fig_delta_crit_profile <- ggplot(df_long, aes(x = x, y = value, colour = quantit
   labs(
     title = "Tipping point under latent confounding: Delta_crit(x) and tau_crit(x)",
     subtitle = paste0("Solid black: Delta_crit(x) = |\u03bc_obs(x)| / M(x), with the RIGOROUS M(x)=ybar=1 (Prop. 5.4.2) \u2014\n",
-                       "note Delta_crit(x) = \u03bc_obs(x) exactly once M(x) is constant. Blue: the corresponding \u03c4_crit\n",
-                       "computed exactly (root-finding on the quadrature-based \u03b4); pale dashed: Corollary 5.4.1 as\n",
-                       "currently written (first-order only) \u2014 note it degenerates near x=0.5, where it is uninformative."),
+                      "note Delta_crit(x) = \u03bc_obs(x) exactly once M(x) is constant. Blue: the corresponding \u03c4_crit\n",
+                      "computed exactly (root-finding on the quadrature-based \u03b4); pale dashed: Corollary 5.4.1 as\n",
+                      "currently written (first-order only) \u2014 SATURATES at 1 near x=0.5, since its leading term\n",
+                      "vanishes there (Prop. 5.3.1) and the min{1,\u00b7} cap takes over; prefer the exact (blue) curve."),
     x = "Treatment quantile x", y = NULL
   ) +
   THEME_THESIS + theme(legend.position = "bottom")
@@ -505,8 +507,8 @@ cat("Section 8 (Delta_crit / tau_crit profile) built.\n")
 # ==============================================================================
 val_plot_df <- validation_table
 val_plot_df$case_lab <- factor(val_plot_df$case,
-  levels = c("CaseA","CaseB","CaseC"),
-  labels = c("Case A (\u03c1_XZ=0.50)","Case B (\u03c1_XZ=0, independence)","Case C (\u03c1_XZ=0.80)"))
+                               levels = c("CaseA","CaseB","CaseC"),
+                               labels = c("Case A (\u03c1_XZ=0.50)","Case B (\u03c1_XZ=0, independence)","Case C (\u03c1_XZ=0.80)"))
 
 fig_validation <- ggplot(val_plot_df, aes(x = x)) +
   geom_ribbon(aes(ymin = -bound, ymax = bound), fill = "#0072B2", alpha = 0.18) +
@@ -516,9 +518,9 @@ fig_validation <- ggplot(val_plot_df, aes(x = x)) +
   labs(
     title = "Validation: the Hoelder bound |B(x)| \u2264 M(x)\u00b7\u03b4(x) (Prop. 6.2.2), checked on a case with Z observed",
     subtitle = paste0("Orange: true bias B(x)=\u03bc(x)\u2212\u03bc_obs(x) (both objects fully computable here since \u03c1_XZ, \u03c1_YZ are\n",
-                       "known). Blue band: \u00b1 the theorem's bound, using the CORRECTED \u03b4(x) [quadrature] and M(x)=1\n",
-                       "[Prop. 5.4.2]. The bound holds everywhere, as it must \u2014 but note how much slack there is:\n",
-                       "the actual bias uses only ~2\u201310% of the ceiling the theorem allows for."),
+                      "known). Blue band: \u00b1 the theorem's bound, using the CORRECTED \u03b4(x) [quadrature] and M(x)=1\n",
+                      "[Prop. 5.4.2]. The bound holds everywhere, as it must \u2014 but note how much slack there is:\n",
+                      "the actual bias uses only ~2\u201310% of the ceiling the theorem allows for."),
     x = "Treatment quantile x", y = "B(x)  (orange)  vs.  \u00b1M(x)\u00b7\u03b4(x)  (blue band)"
   ) +
   THEME_THESIS
@@ -566,7 +568,7 @@ cat(" delta_hat(x) is not.)\n\n")
 
 sep(); cat("TABLE 3 -- VALIDATION: bound tightness (Section 5)\n"); sep()
 tightness <- tapply(validation_table$B_true, validation_table$case, function(b) mean(abs(b))) /
-             tapply(validation_table$bound,  validation_table$case, mean)
+  tapply(validation_table$bound,  validation_table$case, mean)
 print(round(tightness, 4))
 cat("(fraction of the theoretical ceiling M(x)*delta(x) actually used by the realised bias,\n")
 cat(" averaged over x, in a Gaussian-copula example where the truth happens to be known.\n")
@@ -601,17 +603,17 @@ cat("figD_validation_bound_check.pdf        -- theorem check on known-Z case\n")
 cat(strrep("=",70),"\n")
 
 # ==============================================================================
-# SELF-TEST -- reproduces dissertation Table 5 (Example 6.5.3) from
+# SELF-TEST -- reproduces dissertation Table 5 (Example 5.5.3) from
 # delta_gauss() and checks agreement to confirm the quadrature fix is
 # actually correct before trusting anything built on top of it.
 # ==============================================================================
-cat("\n"); sep(); cat("SELF-TEST: delta_gauss() vs dissertation Table 5 (Example 6.5.3)\n"); sep()
+cat("\n"); sep(); cat("SELF-TEST: delta_gauss() vs dissertation Table 5 (Example 5.5.3)\n"); sep()
 table5_truth <- data.frame(
   x    = rep(c(0.10,0.25,0.50,0.75,0.90), 3),
   rho  = rep(c(0.3,0.6,0.9), each = 5),
   dissertation_exact = c(0.314,0.169,0.046,0.169,0.314,
-                          0.682,0.396,0.215,0.396,0.682,
-                          1.264,0.933,0.761,0.933,1.264)
+                         0.682,0.396,0.215,0.396,0.682,
+                         1.264,0.933,0.761,0.933,1.264)
 )
 table5_truth$this_script <- round(delta_gauss(table5_truth$x, table5_truth$rho), 3)
 table5_truth$match <- abs(table5_truth$dissertation_exact - table5_truth$this_script) < 0.003
@@ -638,7 +640,7 @@ CH_RVq <- function(f_YD_X, q = 1) {
 # f_YD|X = t-value / sqrt(df); R2_Y~D|X = f^2/(1+f^2) -- the "extreme scenario" statistic.
 
 # ==============================================================================
-# SECTION 13 -- THE Ch.6 ANALOGUES, precisely placed
+# SECTION 13 -- THE Ch.5 ANALOGUES, precisely placed
 # ==============================================================================
 # (1) EXTREME SCENARIO (their Sec. 4.3 / R2_Y~D|X): fix the outcome-side
 #     sensitivity parameter at its ceiling (their R2_Y~Z|D,X=1; our M(x)=ybar,
@@ -646,13 +648,13 @@ CH_RVq <- function(f_YD_X, q = 1) {
 #     estimate. This is EXACTLY Delta_crit(x) as already defined -- no new
 #     construction needed, the correspondence is exact by definition:
 #         C-H:  set R2_Y~Z|D,X=1  ->  solve R2_D~Z|X = R2_Y~D|X
-#         Ch.6: set M(x)=ybar     ->  solve delta(x) = |mu_obs(x)|/ybar = Delta_crit(x)
+#         Ch.5: set M(x)=ybar     ->  solve delta(x) = |mu_obs(x)|/ybar = Delta_crit(x)
 #
 # (2) ROBUSTNESS VALUE: C-H's RV works because BOTH R2's live on the identical
 #     [0,1] variance-explained scale, so "equal strength on both sides" is a
 #     well-posed question. delta(x) in [0,2] and M(x) in [0,ybar] are NOT
 #     commensurate -- one is a copula-deviation index, the other an outcome
-#     magnitude. There is no literal Ch.6 analogue of RV without first
+#     magnitude. There is no literal Ch.5 analogue of RV without first
 #     normalising. Doing so (delta_tilde=delta/2, M_tilde=M/ybar, both in
 #     [0,1]) and solving the equal-normalised-strength problem
 #     (ybar*RV)*(2*RV) = |mu_obs(x)| gives a well-defined but CONSTRUCTED
@@ -688,7 +690,7 @@ print(round(sensitivity_stats_x, 4))
 # natural available benchmark is the one already-estimable association:
 # rho(X,Y) itself -- "a confounder k times as strongly tied to treatment as
 # treatment already is to the outcome". delta has a hard ceiling of 2
-# (Remark 6.2.1), so, exactly as C-H note multiples of kD can be "ruled out
+# (Remark 5.2.1), so, exactly as C-H note multiples of kD can be "ruled out
 # by the data" (Eq. 65), some k will be infeasible here too.
 benchmark_table <- do.call(rbind, lapply(c(0.10,0.25,0.50,0.75,0.90), function(xv) {
   d1 <- delta_gauss(xv, RHO_XY)
@@ -728,12 +730,12 @@ fig_extreme_scenario <- ggplot(extreme_df, aes(x = delta, y = adj, colour = labe
   geom_hline(yintercept = 0, colour = "grey40", linewidth = 0.4) +
   geom_line(linewidth = 0.9) +
   scale_colour_manual(values = c("100%"="#000000","75%"="#0072B2","50%"="#56B4E9"),
-                       name = "M(x) as % of\nManski ceiling ybar") +
+                      name = "M(x) as % of\nManski ceiling ybar") +
   labs(
     title = paste0("Sensitivity to extreme scenarios (Cinelli-Hazlett Fig. 3, reproduced), x=", EXTREME_X),
     subtitle = paste0("Solid black: confounder's outcome-sensitivity assumed at its full, assumption-free ceiling\n",
-                       "M(x)=ybar (worst case, Prop. 5.4.2). Blue/pale: willing to additionally assume M(x) is only\n",
-                       "75%/50% of that ceiling. Horizontal line: where the adjusted estimate crosses zero."),
+                      "M(x)=ybar (worst case, Prop. 5.4.2). Blue/pale: willing to additionally assume M(x) is only\n",
+                      "75%/50% of that ceiling. Horizontal line: where the adjusted estimate crosses zero."),
     x = "delta(x)  [confounder-treatment association, copula-ratio scale]",
     y = "adjusted mu(x) = mu_obs(x) - M(x)\u00b7delta(x)"
   ) +
@@ -744,7 +746,7 @@ cat("Section 15 (extreme-scenario plot) built.\n")
 # SECTION 16 -- THE EXTENSION: sensitivity statistics as FUNCTIONS of x
 # ==============================================================================
 # C-H's RV and R2_Y~D|X are each a single number for a single regression
-# coefficient, because a linear model has one treatment effect. Chapter 6's
+# coefficient, because a linear model has one treatment effect. Chapter 5's
 # objects are functions of x by construction (mu(x) is a dose-response curve),
 # so both the extreme-scenario statistic and the newly-constructed RV_copula
 # generalise into full curves across the treatment quantile. This is not
@@ -766,15 +768,15 @@ ext_long <- rbind(
 fig_extension_x <- ggplot(ext_long, aes(x = x, y = value, colour = stat)) +
   geom_line(linewidth = 1) +
   scale_colour_manual(values = c("Extreme-scenario statistic (~ C-H's R2_Y~D|X)" = "#000000",
-                                  "RV_copula(x) [constructed, normalised]" = "#D55E00"),
-                       name = NULL) +
+                                 "RV_copula(x) [constructed, normalised]" = "#D55E00"),
+                      name = NULL) +
   scale_y_continuous(limits = c(0,1)) +
   labs(
     title = "The extension: robustness as a function of treatment dose, not a single number",
     subtitle = paste0("A linear regression coefficient has exactly one value here (one point, one x).\n",
-                       "The copula framework hands back the whole curve: the treatment effect is markedly\n",
-                       "MORE fragile in the tails of the dose-response than in the middle -- a fact a single\n",
-                       "reported robustness value could never reveal."),
+                      "The copula framework hands back the whole curve: the treatment effect is markedly\n",
+                      "MORE fragile in the tails of the dose-response than in the middle -- a fact a single\n",
+                      "reported robustness value could never reveal."),
     x = "Treatment quantile x", y = NULL
   ) +
   THEME_THESIS + theme(legend.position = "bottom")
@@ -812,16 +814,16 @@ fig_contour_ch_style <- ggplot(grid_ch, aes(x = delta, y = M, z = adj)) +
   geom_point(data = bench_ch, aes(x = delta, y = M, z = NULL), shape = 4, size = 2, stroke = 1.1, colour="white") +
   geom_point(data = bench_ch, aes(x = delta, y = M, z = NULL), shape = 4, size = 1.6, stroke = 0.9, colour="black") +
   geom_text_repel(data = bench_ch, aes(x = delta, y = M, z = NULL, label = paste0(k, " rho_XY")),
-                   size = 2.3, nudge_y = -0.08, direction = "y", segment.size = 0.2, seed = 2, max.overlaps = 20) +
+                  size = 2.3, nudge_y = -0.08, direction = "y", segment.size = 0.2, seed = 2, max.overlaps = 20) +
   scale_fill_viridis_d(name = "adjusted \u03bc(x)\n(sign flips at 0)", option = "magma", direction = -1) +
   facet_wrap(~x_label, nrow = 1) +
   coord_cartesian(xlim = c(0,2), ylim = c(0, YBAR), expand = FALSE) +
   labs(
     title = "Same construction, Cinelli-Hazlett house style: contours of the ADJUSTED ESTIMATE",
     subtitle = paste0("Dashed isoline: adjusted \u03bc(x) = 0 (sign flip). Crosses: confounders 1x/2x/3x as strongly\n",
-                       "tied to treatment as X already is to Y -- direct analogue of their \"1x/2x/3x Female\" markers\n",
-                       "(Fig. 2). Where a cross falls outside x\u2208[0,2], that multiple is infeasible (\u03b4 has a hard\n",
-                       "ceiling of 2, Remark 6.2.1) -- the copula-scale analogue of their kD being data-bounded."),
+                      "tied to treatment as X already is to Y -- direct analogue of their \"1x/2x/3x Female\" markers\n",
+                      "(Fig. 2). Where a cross falls outside x\u2208[0,2], that multiple is infeasible (\u03b4 has a hard\n",
+                      "ceiling of 2, Remark 5.2.1) -- the copula-scale analogue of their kD being data-bounded."),
     x = "\u03b4(x)", y = "M(x)"
   ) +
   THEME_THESIS + theme(legend.position = "bottom", axis.text.x = element_text(size=7))
