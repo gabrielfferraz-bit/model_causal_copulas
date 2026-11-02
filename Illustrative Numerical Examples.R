@@ -2,23 +2,32 @@
 # Illustrative Numerical Examples: Gaussian and FGM Copulas
 # ==============================================================================
 #
-# This script reproduces the numerical examples in Chapter 4.
+# This script reproduces the numerical examples in Chapter 3
+# of the dissertation "Relationship between Observational and 
+# Interventional Means under Unmeasured Confounding:
+# A Copula Perspective" by Ferraz (2026)
 #
 # The script implements two copula families:
-#     - Gaussian copula: mu(x) is U-shaped with tail amplification, governed
-#                         by the structural coefficient K (Eq. 5.16), which is
-#                         non-monotonic in rho_XZ (Section 5.6.1).
-#     - FGM copula      : mu(x) is exactly affine in x, with beta cancelling
-#                          out of the mean by an antisymmetry argument
-#                          (Eq. 5.23; Section 5.6.2).
+#     - Gaussian copula: mu(x) = Phi(K * Phi^{-1}(x)) is S-shaped
+#                         (monotone increasing sigmoidal), governed by the
+#                         structural coefficient K (Eq. 3.38). In the numerical
+#                         examples K < 1, so the tails are compressed toward
+#                         1/2 relative to x (tail attenuation), not amplified.
+#                         K is non-monotonic in rho_XZ (Section 3.3.2;
+#                         Example 3.3.6).
+#     - FGM copula      : mu(x) is exactly affine in x (Eq. 3.36), with beta
+#                         cancelling out of the mean by an antisymmetry
+#                         argument (Section 3.3.2; Examples 3.3.3 and 3.3.5).
+#                         beta remains in the interventional CDF (Eq. 3.18)
+#                         through F_{X|Z}(x|z).
 #
 # For each family and each confounding regime the script computes and
 # tabulates, over a grid of treatment quantiles x:
-#     (a) Observational mean   E[Y | X = x]           (Eqs. 5.17, 5.24)
-#     (b) Interventional mean  mu(x) = E[Y | do(X=x)]  (Eqs. 5.16, 5.23)
-#     (c) Confounding bias     B(x) = E[Y|X=x] - mu(x) (Eqs. 5.17, 5.25)
+#     (a) Observational mean   E[Y | X = x]           (Eqs. 3.39, 3.37)
+#     (b) Interventional mean  mu(x) = E[Y | do(X=x)]  (Eqs. 3.38, 3.36)
+#     (c) Confounding bias     B(x) = mu_obs(x) - mu(x) (Eqs. 3.42, 3.41)
 #
-# These three quantities -- E[Y|X=x], mu(x), and the analytic confounding
+# These three quantities -- mu_obs(x), mu(x), and the analytic confounding
 # bias B(x) -- are the only causal quantities reported in this version of
 # the dissertation; no ACE, interventional SD, or standardised-ACE object
 # is computed.
@@ -26,7 +35,7 @@
 # INPUTS  : none -- all parameters are set inline in "Section 2 - Parameters".
 # OUTPUTS : console tables (Table 3: Gaussian; Table 4: FGM) and composite
 #           figures (Figure 12: Gaussian; Figure 13: FGM), each showing
-#           E[Y|X=x] and mu(x) (left panel) and B(x) (right panel).
+#           mu_obs(x) and mu(x) (left panel) and B(x) (right panel).
 #
 # PACKAGE DEPENDENCY
 #   None beyond base R (stats for pnorm/qnorm/dnorm).
@@ -84,7 +93,7 @@ LTYS <- c(1L, 1L, 2L)
 #'   K = a / sqrt(1 + V),   so that   mu(x) = Phi(K * Phi^{-1}(x)).
 #'
 #' The no-confounding value K_0 (i.e. K evaluated at rho_XZ = 0) governs the
-#' OBSERVATIONAL mean instead: E[Y|X=x] = Phi(K_0 * Phi^{-1}(x)), since
+#' OBSERVATIONAL mean instead: mu_obs(x) = Phi(K_0 * Phi^{-1}(x)), since
 #' Y* | X* = x* ~ N(rho_XY * Phi^{-1}(x), 1 - rho_XY^2) directly, with no Z*
 #' to marginalise (Step 3). K_0 = rho_XY / sqrt(2 - rho_XY^2).
 gaussian_K_and_V <- function(rho_xy, rho_xz, rho_yz) {
@@ -111,7 +120,7 @@ mu_gaussian <- function(x, K) pnorm(K * qnorm(x))
 #' Same functional form as mu_gaussian(), but driven by K_0 rather than K.
 eobs_gaussian <- function(x, K0) pnorm(K0 * qnorm(x))
 
-#' Confounding bias  B(x) = E[Y|X=x] - mu(x)
+#' Confounding bias  B(x) = mu_obs(x) - mu(x)
 bias_gaussian <- function(x, K, K0) {
   eobs_gaussian(x, K0) - mu_gaussian(x, K)
 }
@@ -142,7 +151,7 @@ mu_fgm <- function(x, params) {
 
 #' Observational mean E[Y | X = x] under the confounded FGM DAG (Eq. 5.24).
 #'
-#' E[Y|X=x] = 1/2 - (1-2x) * [ beta*eta/18 + alpha*(15-eta^2)/90
+#' mu_obs(x) = 1/2 - (1-2x) * [ beta*eta/18 + alpha*(15-eta^2)/90
 #'                              - alpha*beta^2*(25-3*eta^2)/225 * x*(1-x) ]
 eobs_fgm <- function(x, params) {
   alpha <- params["theta_xy_cond"]
@@ -158,7 +167,7 @@ eobs_fgm <- function(x, params) {
   )
 }
 
-#' Confounding bias B(x) = E[Y|X=x] - mu(x) under the FGM model.
+#' Confounding bias B(x) = mu_obs(x) - mu(x) under the FGM model.
 #'
 #' Subtracting Eqs. 5.23 and 5.24 gives
 #'
@@ -186,7 +195,7 @@ bias_fgm <- function(x, params) {
 
 
 # ------------------------------------------------------------------------------
-# 1C  Generic utility: compute E[Y|X=x], mu(x), and B(x) over a grid
+# 1C  Generic utility: compute mu_obs(x), mu(x), and B(x) over a grid
 # ------------------------------------------------------------------------------
 
 #' Evaluate the observational mean, interventional mean, and confounding
@@ -214,7 +223,7 @@ compute_causal_quantities <- function(eobs_fn, mu_fn, bias_fn, params, xgrid) {
 # 1D  Generic utility: print a formatted summary table to the console
 # ------------------------------------------------------------------------------
 
-#' Print a formatted E[Y|X=x] / mu(x) / B(x) summary table, reproducing the
+#' Print a formatted mu_obs(x) / mu(x) / B(x) summary table, reproducing the
 #' layout of Tables 3-4 of the dissertation.
 #'
 #' @param res         Output list from compute_causal_quantities()
@@ -224,7 +233,7 @@ compute_causal_quantities <- function(eobs_fn, mu_fn, bias_fn, params, xgrid) {
 #' @param param_label Character vector of per-case parameter annotations
 print_causal_table <- function(res, xgrid, idx, case_names, param_label) {
   header  <- sprintf("%-6s  %-13s  %-9s  %-9s",
-                     "x", "E[Y|X=x]", "mu(x)", "B(x)")
+                     "x", "mu_obs(x)", "mu(x)", "B(x)")
   divider <- strrep("-", 42)
   
   for (j in seq_along(case_names)) {
@@ -249,15 +258,15 @@ print_causal_table <- function(res, xgrid, idx, case_names, param_label) {
 
 #' Draw the standard two-panel causal summary figure used for Figures 12-13.
 #'
-#' Left panel:  E[Y|X=x] (dashed, per case) overlaid with mu(x) (solid, per
+#' Left panel:  mu_obs(x) (dashed, per case) overlaid with mu(x) (solid, per
 #'              case) -- directly visualises the confounding gap that B(x)
 #'              quantifies in the right panel.
-#' Right panel: B(x) = E[Y|X=x] - mu(x), the analytic confounding bias.
+#' Right panel: B(x) = mu_obs(x) - mu(x), the analytic confounding bias.
 plot_two_panels <- function(xgrid, res, labs, cols, ltys, title_tag = "") {
   par(mfrow = c(1, 2), mar = c(4.5, 4.5, 3, 1))
   n_cases <- ncol(res$mu)
   
-  # --- Left panel: E[Y|X=x] (dashed) and mu(x) (solid) -----------------------
+  # --- Left panel: mu_obs(x) (dashed) and mu(x) (solid) -----------------------
   
   ylim_left <- range(c(res$eobs, res$mu), finite = TRUE)
   ylim_left <- c(max(0, ylim_left[1] - 0.02),
@@ -267,7 +276,7 @@ plot_two_panels <- function(xgrid, res, labs, cols, ltys, title_tag = "") {
        ylim = ylim_left,
        xlab = expression(x), ylab = "",
        main = bquote("" ~ mu(x) ~
-                       "& E[Y|X=x]" ~ .(title_tag)))
+                       "&" ~ mu[obs](x) ~ .(title_tag)))
   
   lines(xgrid, res$eobs[, 1], lwd = 2, col = cols[1], lty = 3)
   
@@ -280,7 +289,7 @@ plot_two_panels <- function(xgrid, res, labs, cols, ltys, title_tag = "") {
   
   legend("bottomright",
          legend = c(expression(mu(x) ~ "(interventional, solid/dashed per case)"),
-                    "E[Y|X=x] (observational, dotted)"),
+                    expression(mu[obs](x) ~ "(observational, dotted)")),
          lty = c(1, 3), lwd = 2, col = c("black", "black"),
          bty = "n", cex = 0.75)
   
@@ -295,7 +304,7 @@ plot_two_panels <- function(xgrid, res, labs, cols, ltys, title_tag = "") {
   plot(xgrid, res$bias[, 1], type = "l", lwd = 2, col = cols[1],
        ylim = ylim_right,
        xlab = expression(x), ylab = expression(B(x)),
-       main = bquote("" ~ B(x) == "E[Y|X=x] -" ~ mu(x) ~
+       main = bquote("" ~ B(x) == mu[obs](x) - mu(x) ~
                        .(title_tag)))
   
   for (j in 2:n_cases)
@@ -303,7 +312,7 @@ plot_two_panels <- function(xgrid, res, labs, cols, ltys, title_tag = "") {
   
   abline(h = 0, lty = 3, col = "gray50")
   
-  legend("topright", legend = labs, col = cols, lwd = 2, lty = ltys, bty = "n")
+  legend("topleft", legend = labs, col = cols, lwd = 2, lty = ltys, bty = "n")
 }
 
 
@@ -319,21 +328,22 @@ plot_two_panels <- function(xgrid, res, labs, cols, ltys, title_tag = "") {
 # All three cases share rho_XY = 0.70, rho_YZ = 0.60; only rho_XZ varies.
 
 gauss_params <- list(
-  Moderate = c(rho_xy = 0.70, rho_xz = 0.50, rho_yz = 0.60),
-  None     = c(rho_xy = 0.70, rho_xz = 0.00, rho_yz = 0.60),
-  Strong   = c(rho_xy = 0.70, rho_xz = 0.80, rho_yz = 0.60)
+  `rho_XZ = 0.50` = c(rho_xy = 0.70, rho_xz = 0.50, rho_yz = 0.60),
+  `rho_XZ = 0.00` = c(rho_xy = 0.70, rho_xz = 0.00, rho_yz = 0.60),
+  `rho_XZ = 0.80` = c(rho_xy = 0.70, rho_xz = 0.80, rho_yz = 0.60)
 )
 
 
 # ---- 2B  FGM copula: dependence parameters ---------------------------------
 
-# Three cases vary alpha = theta_{X,Y|Z} while holding
-# beta = theta_{X,Z} = 0.50 and eta = theta_{Y,Z} = 0.30 fixed.
+# All three cases share alpha = theta_{X,Y|Z} = 0.20
+# and eta = theta_{Y,Z} = 0.30; only
+# beta = theta_{X,Z} varies.
 
 fgm_params <- list(
-  CaseA = c(theta_xy_cond = 0.40, theta_xz = 0.50, theta_yz = 0.30),
-  CaseB = c(theta_xy_cond = 0.80, theta_xz = 0.50, theta_yz = 0.30),
-  CaseC = c(theta_xy_cond = 0.20, theta_xz = 0.50, theta_yz = 0.30)
+  Beta0  = c(theta_xy_cond = 0.20, theta_xz = 0.00, theta_yz = 0.30),
+  Beta05 = c(theta_xy_cond = 0.20, theta_xz = 0.50, theta_yz = 0.30),
+  Beta1  = c(theta_xy_cond = 0.20, theta_xz = 1.00, theta_yz = 0.30)
 )
 
 
@@ -386,12 +396,12 @@ stopifnot(
 
 # ---- 3B  FGM copula ---------------------------------------------------------
 
-cat("\nFGM copula: alpha = theta_{X,Y|Z} values\n")
+cat("\nFGM copula: beta = theta_{X,Z} values\n")
 
-alpha_vals <- sapply(fgm_params, function(p) p["theta_xy_cond"])
-names(alpha_vals) <- names(fgm_params)
+beta_vals <- sapply(fgm_params, function(p) p["theta_xz"])
+names(beta_vals) <- names(fgm_params)
 
-print(round(alpha_vals, 4))
+print(round(beta_vals, 4))
 
 cat("Computing FGM causal quantities...\n")
 
@@ -414,25 +424,25 @@ stopifnot(
 cat("\nFGM bias range over plotting grid:\n")
 print(range(res_fgm$bias, finite = TRUE))
 
-# For the chosen parameter values, the bias remains below 0.01 in absolute
+# For the chosen parameter values, the bias remains below 0.02 in absolute
 # value over the plotting grid.
-stopifnot(max(abs(res_fgm$bias)) < 0.01)
+stopifnot(max(abs(res_fgm$bias)) < 0.02)
 
 
 # ==============================================================================
 # SECTION 4 - CONSOLE OUTPUT (Tables 3-4)
 # ==============================================================================
 
-CASE_NAMES_GAUSS <- c("Moderate", "None", "Strong")
-CASE_NAMES_FGM   <- c("Case A", "Case B", "Case C")
+CASE_NAMES_GAUSS <- names(gauss_params)
+CASE_NAMES_FGM   <- sprintf("beta = %.2f", beta_vals)
 
-cat("\n\n=== TABLE 3: Gaussian Copula -- E[Y|X=x], mu(x), B(x) ===\n")
+cat("\n\n=== TABLE 3: Gaussian Copula -- mu_obs(x), mu(x), B(x) ===\n")
 cat("(rho_XY = 0.70, rho_YZ = 0.60 throughout; matches tab:gaussian)\n")
 
 gauss_labels <- sprintf(
-  "rho_XZ = %.2f, K = %.4f",
-  sapply(gauss_params, function(p) p["rho_xz"]),
-  K_vals
+  "K = %.4f; K0 = %.4f",
+  K_vals,
+  K0_vals
 )
 
 print_causal_table(
@@ -444,12 +454,12 @@ print_causal_table(
 )
 
 
-cat("\n\n=== TABLE 4: FGM Copula -- E[Y|X=x], mu(x), B(x) ===\n")
-cat("(beta = 0.50, eta = 0.30 throughout; matches tab:fgm)\n")
+cat("\n\n=== TABLE 4: FGM Copula -- mu_obs(x), mu(x), B(x) ===\n")
+cat("(alpha = 0.20, eta = 0.30 throughout; beta varies)\n")
 
-fgm_labels <- sprintf(
-  "alpha = %.2f",
-  alpha_vals
+fgm_labels <- rep(
+  "alpha = 0.20, eta = 0.30",
+  length(beta_vals)
 )
 
 print_causal_table(
@@ -466,14 +476,13 @@ print_causal_table(
 # ==============================================================================
 
 # Assemble legend labels linking each curve to its parameter value.
-labs_gauss <- sprintf("%s (K = %.4f)", CASE_NAMES_GAUSS, K_vals)
-labs_fgm   <- sprintf("%s (alpha = %.2f)", CASE_NAMES_FGM, alpha_vals)
+labs_gauss <- CASE_NAMES_GAUSS
+labs_fgm   <- CASE_NAMES_FGM
 
 # Create output directory if it does not already exist.
 if (!dir.exists("imagens")) {
   dir.create("imagens", recursive = TRUE)
 }
-
 
 # ---- Figure 12: Gaussian copula ---------------------------------------------
 
@@ -524,15 +533,15 @@ dev.off()
 # ==============================================================================
 
 cat("\n", strrep("=", 79), "\n", sep = "")
-cat("SUMMARY: E[Y|X=x], mu(x), AND THE ANALYTIC CONFOUNDING BIAS B(x)\n")
+cat("SUMMARY: mu_obs(x), mu(x), AND THE ANALYTIC CONFOUNDING BIAS B(x)\n")
 cat(strrep("=", 79), "\n\n")
 
 cat("Both families reproduce the qualitative contrast of the numerical examples:\n\n")
 
 cat("1. GAUSSIAN COPULA:\n")
-cat("   - mu(x) and E[Y|X=x] are both S-shaped (Phi(K*Phi^{-1}(x)) family).\n")
+cat("   - mu(x) and mu_obs(x) are both S-shaped (Phi(K*Phi^{-1}(x)) family).\n")
 cat("   - K is non-monotonic in |rho_XZ| through the structural coefficients.\n")
-cat("   - B(x) = E[Y|X=x] - mu(x), vanishes at x = 0.5, and changes sign\n")
+cat("   - B(x) = mu_obs(x) - mu(x), vanishes at x = 0.5, and changes sign\n")
 cat("     across the median.\n\n")
 
 cat("2. FGM COPULA:\n")
@@ -545,11 +554,11 @@ cat("   - B(x) is generally cubic in x through the term\n")
 cat("     x*(1-x)*(1-2*x) in Eq. 5.25.\n\n")
 
 cat("3. VERIFICATION:\n")
-cat("   - bias_gaussian() equals E[Y|X=x] - mu(x) to machine precision.\n")
-cat("   - bias_fgm() equals E[Y|X=x] - mu(x) to machine precision.\n")
+cat("   - bias_gaussian() equals mu_obs(x) - mu(x) to machine precision.\n")
+cat("   - bias_fgm() equals mu_obs(x) - mu(x) to machine precision.\n")
 cat("   - Table values are evaluated at the exact stated treatment values,\n")
 cat("     including x = 0.50.\n")
-cat("   - The FGM bias remains below 0.01 in absolute value over the plotting\n")
+cat("   - The FGM bias remains below 0.02 in absolute value over the plotting\n")
 cat("     grid for the parameter values used here.\n\n")
 
 cat("This script implements the closed-form expressions used for the numerical\n")
