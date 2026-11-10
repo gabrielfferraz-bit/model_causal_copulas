@@ -570,12 +570,10 @@ make_fig2_panel <- function(beta_value, panel_letter) {
 
     # Exact axis range and breaks from the manuscript
     scale_x_continuous(
-      limits = c(0, 0.5),
+      limits = c(0, 0.53),
       breaks = seq(0, 0.5, by = 0.1),
       labels = function(z) sprintf("%.1f", z),
-      # Extra room on both ends keeps the endpoint tick labels fully visible.
-      # Leave enough room after 0.5 so the final tick label is not clipped.
-      expand = expansion(mult = c(0.01, 0.08))
+      expand = expansion(mult = c(0, 0))
     ) +
 
     scale_y_continuous(
@@ -628,7 +626,7 @@ make_fig2_panel <- function(beta_value, panel_letter) {
       ),
       axis.title = element_text(size = 12.5),
       axis.text = element_text(size = 11.0),
-      plot.margin = margin(4, 10, 4, 4)
+      plot.margin = margin(4, 16, 4, 4)
     )
 }
 
@@ -667,7 +665,6 @@ legend_item <- function(icon, label, icon_width = 9, text_size = 9.0) {
     )
   )
 }
-
 icon_green <- rectGrob(
   width = unit(8, "mm"),
   height = unit(3.5, "mm"),
@@ -713,20 +710,20 @@ icon_black_diamond <- polygonGrob(
 legend_items <- list(
   legend_item(
     icon_green,
-    "d < Delta[crit]: sign guaranteed"
+    expression(d < Delta[crit] ~~ ": sign guaranteed")
   ),
   legend_item(
     icon_orange,
-    "d >= Delta[crit]: interval reaches 0"
+    expression(d >= Delta[crit] ~~ ": interval reaches 0")
   ),
   legend_item(
     icon_blue_line,
-    "mu[obs](0.01) %+-% M(0.01) * d",
+    expression(mu[obs](0.01) %+-% M(0.01) %.% d),
     icon_width = 12
   ),
   legend_item(
     icon_blue_point,
-    "mu[obs](0.01)"
+    expression(mu[obs](0.01))
   ),
   legend_item(
     icon_black_bar,
@@ -735,7 +732,7 @@ legend_items <- list(
   ),
   legend_item(
     icon_black_diamond,
-    "true mu(0.01) = 0.106"
+    expression("true " * mu(0.01) == 0.106)
   )
 )
 
