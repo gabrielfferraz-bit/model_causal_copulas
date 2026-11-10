@@ -3,15 +3,15 @@
 # Figures  + numerical tables
 #
 # Run in the R console:
-#   source("Sensitivity_Analysis_Illustrative_Numerical_Examples_with_tipping_table.R")
+#   source("Sensitivity_Analysis_Illustrative_Numerical_Examples_Figure2_fixed.R")
 #
-# The Figure geometry below follows the manuscript construction:
-#   green region  : delta < Delta_crit
-#   orange region : delta >= Delta_crit
-#   blue lines    : mu_obs(0.01) +/- M(0.01) delta
+# The Figure 2 geometry below follows the manuscript construction:
+#   green region  : d < Delta_crit
+#   orange region : d >= Delta_crit
+#   blue lines    : mu_obs(0.01) +/- M(0.01) d
 #   red dotted    : Delta_crit
-#   grey dashed   : FGM model-implied delta(beta)
-#   black bar     : interval at the FGM model-implied delta
+#   black dashed  : FGM-implied delta(0.01)
+#   black bar     : interval at the FGM-implied value of d
 #   black diamond : true interventional mean mu(0.01) = 0.106
 #
 # ==============================================================================
@@ -380,11 +380,11 @@ make_fig2_panel <- function(beta_value, panel_letter) {
   # --------------------------------------------------------------------------
 
   # Green region:
-  # apex at delta = 0, y = mu_obs
+  # apex at d = 0, y = mu_obs
   # and vertical segment at Delta_crit from 0 to 2*mu_obs,
   # with the ordering automatically reversed when mu_obs < 0.
   green_poly <- data.frame(
-    delta = c(
+    d = c(
       0,
       d_crit,
       d_crit
@@ -397,9 +397,9 @@ make_fig2_panel <- function(beta_value, panel_letter) {
   )
 
   # Orange region:
-  # begins at Delta_crit and extends to delta = 0.5.
+  # begins at Delta_crit and extends to d = 0.5.
   orange_poly <- data.frame(
-    delta = c(
+    d = c(
       d_crit,
       d_crit,
       0.5,
@@ -414,7 +414,7 @@ make_fig2_panel <- function(beta_value, panel_letter) {
   )
 
   band <- data.frame(
-    delta = d,
+    d = d,
     lower = lower,
     upper = upper
   )
@@ -428,7 +428,7 @@ make_fig2_panel <- function(beta_value, panel_letter) {
     # Green = sign guaranteed
     geom_polygon(
       data = green_poly,
-      aes(x = delta, y = y),
+      aes(x = d, y = y),
       fill = COL_GREEN,
       alpha = 0.30,
       colour = NA
@@ -437,7 +437,7 @@ make_fig2_panel <- function(beta_value, panel_letter) {
     # Orange = interval reaches zero
     geom_polygon(
       data = orange_poly,
-      aes(x = delta, y = y),
+      aes(x = d, y = y),
       fill = COL_ORANGE,
       alpha = 0.30,
       colour = NA
@@ -454,19 +454,19 @@ make_fig2_panel <- function(beta_value, panel_letter) {
     # Blue sensitivity bounds
     geom_line(
       data = band,
-      aes(x = delta, y = upper),
+      aes(x = d, y = upper),
       colour = COL_BLUE,
       linewidth = 1.05
     ) +
 
     geom_line(
       data = band,
-      aes(x = delta, y = lower),
+      aes(x = d, y = lower),
       colour = COL_BLUE,
       linewidth = 1.05
     ) +
 
-    # mu_obs point at delta = 0
+    # mu_obs point at d = 0
     geom_point(
       aes(x = 0, y = obs),
       shape = 16,
@@ -515,7 +515,7 @@ make_fig2_panel <- function(beta_value, panel_letter) {
       vjust = 1
     ) +
 
-    # Model-implied FGM delta: grey dashed line
+    # Model-implied FGM delta: black dashed line
     geom_segment(
       aes(
         x = d_model,
@@ -528,7 +528,8 @@ make_fig2_panel <- function(beta_value, panel_letter) {
       colour = "black"
     ) +
 
-    # Model-implied delta annotation
+    # Actual FGM-implied sensitivity value at x = 0.01.
+    # This is delta(0.01), whereas d is the hypothetical plotting value.
     annotate(
       "text",
       x = d_model,
@@ -572,7 +573,9 @@ make_fig2_panel <- function(beta_value, panel_letter) {
       limits = c(0, 0.5),
       breaks = seq(0, 0.5, by = 0.1),
       labels = function(z) sprintf("%.1f", z),
-      expand = c(0, 0)
+      # Extra room on both ends keeps the endpoint tick labels fully visible.
+      # Leave enough room after 0.5 so the final tick label is not clipped.
+      expand = expansion(mult = c(0.01, 0.08))
     ) +
 
     scale_y_continuous(
@@ -592,9 +595,9 @@ make_fig2_panel <- function(beta_value, panel_letter) {
       subtitle = if (
         d_model < d_crit
       ) {
-        "delta < Delta_crit: sign guaranteed"
+        "d < Delta_crit: sign guaranteed"
       } else {
-        "delta > Delta_crit: sign not guaranteed"
+        "d > Delta_crit: sign not guaranteed"
       },
       x = "d",
       y = "bound on mu(0.01)"
@@ -625,7 +628,7 @@ make_fig2_panel <- function(beta_value, panel_letter) {
       ),
       axis.title = element_text(size = 12.5),
       axis.text = element_text(size = 11.0),
-      plot.margin = margin(4, 4, 4, 4)
+      plot.margin = margin(4, 10, 4, 4)
     )
 }
 
@@ -710,15 +713,15 @@ icon_black_diamond <- polygonGrob(
 legend_items <- list(
   legend_item(
     icon_green,
-    "delta < Delta[crit]: sign guaranteed"
+    "d < Delta[crit]: sign guaranteed"
   ),
   legend_item(
     icon_orange,
-    "delta >= Delta[crit]: interval reaches 0"
+    "d >= Delta[crit]: interval reaches 0"
   ),
   legend_item(
     icon_blue_line,
-    "mu[obs](0.01) %+-% M(0.01) * delta",
+    "mu[obs](0.01) %+-% M(0.01) * d",
     icon_width = 12
   ),
   legend_item(
@@ -727,7 +730,7 @@ legend_items <- list(
   ),
   legend_item(
     icon_black_bar,
-    "interval at the FGM distribution's delta(0.01)",
+    "interval at the FGM-implied value of d",
     icon_width = 12
   ),
   legend_item(
